@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         🏝️ Time Island & Sidebar Widgets v4
 // @namespace    https://achma-learning.github.io/
-// @version      4.0
-// @description  Floating island + sidebar: prayer times (city search), weather (synced), calendar, settings, quick links. Alt+Ctrl=sidebar/clock, Alt+T=island. Hover clock→Google Calendar, hover date→calendar, hover arabic→Hijri.
+// @version      4.2.1
+// @description  Floating island + sidebar: prayer times, weather, calendar, settings, quick links. Lock/scale/font-preset island. Alt+Ctrl=sidebar, Alt+T=island.
 // @author       Achma
 // @match        *://*/*
 // @grant        GM_addStyle
@@ -64,6 +64,8 @@
   const gSet=(k,v)=>{try{GM_setValue(k,v)}catch{}};
   const tMin=s=>{if(!s)return-1;const p=s.split(':');return+p[0]*60+(+p[1])};
   const norm=s=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  // XSS-safe: only our own hardcoded prayer names ever go through innerHTML below
+  const escHtml=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
   function toHijri(gY,gM,gD){
     const a=Math.floor((14-(gM+1))/12),y=gY+4800-a,m=(gM+1)+12*a-3;
@@ -77,17 +79,38 @@
   // ═══════════════════════════════════════════
   //  §2  STATE
   // ═══════════════════════════════════════════
-  let selCity = gGet('ti_city_idx', 22); // index into CITIES array, default Marrakech
-  let prayerData = null; // {Fajr:'05:12',...}
+  let selCity = gGet('ti_city_idx', 22);
+  let prayerData = null;
   let prayerHijri = '';
   let swOn=false,swT0=0,swE=0,swI=null;
   const cfg = {
-    islandPos: gGet('ti_pos','top-center'),
-    showIsland: gGet('ti_showIsland', true),
-    showClock: gGet('ti_showClock', true),
+    islandPos:   gGet('ti_pos','top-center'),
+    showIsland:  gGet('ti_showIsland', true),
+    showClock:   gGet('ti_showClock', true),
+    lockIsland:  gGet('ti_lockIsland', false),
+    islandScale: gGet('ti_islandScale', 'medium'),   // small | medium | large | xl
+    fontPreset:  gGet('ti_fontPreset', 'default'),    // default | digital | papyrus
+    showEmojis:  gGet('ti_showEmojis', true),
+    showPopups:  gGet('ti_showPopups', true),
+    islandBg:    gGet('ti_islandBg', 'default'),     // 'default' | 'transparent' | '#rrggbb'
   };
 
   function getCity(){ return CITIES[selCity] || CITIES.find(c=>c[3]==='Marrakech') || CITIES[0]; }
+
+  // ═══════════════════════════════════════════
+  //  §2b  GOOGLE FONTS LOADER (for presets)
+  // ═══════════════════════════════════════════
+  function loadFontPreset(preset){
+    const old=document.getElementById('ti-gfonts');
+    if(old)old.remove();
+    if(preset==='digital'){
+      const lk=document.createElement('link');
+      lk.id='ti-gfonts'; lk.rel='stylesheet';
+      lk.href='https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700&family=Inter:wght@400;500;600&family=Noto+Sans+Arabic:wght@400;600;700&family=Rubik:wght@400;600&display=swap';
+      document.head.appendChild(lk);
+    }
+  }
+  loadFontPreset(cfg.fontPreset);
 
   // ═══════════════════════════════════════════
   //  §3  INJECT CSS
@@ -104,6 +127,50 @@
 #ti-island:hover{box-shadow:0 8px 32px rgba(0,0,0,.4),0 0 24px rgba(56,189,248,.12)}
 @keyframes tiIn{from{opacity:0;transform:translateY(-30px) scale(.92)}}
 
+/* ── Island scale (zoom is spec-standard since 2024) ── */
+#ti-island.ti-scale-small{zoom:.82}
+#ti-island.ti-scale-large{zoom:1.18}
+#ti-island.ti-scale-xl{zoom:1.38}
+
+/* ── Island lock indicator ── */
+#ti-island.ti-locked{border-color:rgba(56,189,248,.25)}
+#ti-island.ti-locked .ti-dot{background:var(--tia)}
+
+/* ── Hide island emojis when toggled off ── */
+#ti-island.ti-no-emoji .ti-emoji{display:none}
+
+/* ── Transparent island bg ── */
+#ti-island.ti-bg-clear{background:transparent!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;border-color:rgba(255,255,255,.08)!important;box-shadow:none!important}
+
+/* ── Color picker row ── */
+.ti-set-color{display:flex;flex-direction:column;gap:8px;padding:8px 0}
+.ti-set-color-label{font-size:12px;color:var(--tid)}
+.ti-set-color-row{display:flex;align-items:center;gap:8px}
+.ti-set-color-pick{width:36px;height:28px;border:1px solid var(--tib);border-radius:6px;cursor:pointer;background:none;padding:0;overflow:hidden}
+.ti-set-color-pick::-webkit-color-swatch-wrapper{padding:0}
+.ti-set-color-pick::-webkit-color-swatch{border:none;border-radius:4px}
+.ti-set-color-pick::-moz-color-swatch{border:none;border-radius:4px}
+.ti-set-hex{flex:1;background:rgba(0,0,0,.2);border:1px solid var(--tib);color:var(--tit);padding:5px 8px;border-radius:8px;font-size:11px;font-family:var(--tim);outline:none;text-transform:uppercase;letter-spacing:.5px;transition:border-color .2s}
+.ti-set-hex:focus{border-color:var(--tia)}
+.ti-set-hex::placeholder{color:rgba(148,163,184,.4);text-transform:none;letter-spacing:0}
+.ti-set-color-btns{display:flex;gap:6px}
+.ti-set-cbtn{padding:4px 10px;border-radius:6px;font-size:10px;font-weight:600;cursor:pointer;border:1px solid var(--tib);background:var(--tig);color:var(--tid);transition:background .2s,color .2s}
+.ti-set-cbtn:hover{background:rgba(255,255,255,.1);color:var(--tit)}
+.ti-set-cbtn.active{border-color:var(--tia);color:var(--tia)}
+
+/* ── Font preset: Digital ── */
+#ti-island.ti-font-digital .ti-clk{font-family:'Orbitron',var(--tim);letter-spacing:1.5px}
+#ti-island.ti-font-digital .ti-en{font-family:'Inter',var(--tif)}
+#ti-island.ti-font-digital .ti-ar{font-family:'Noto Sans Arabic',var(--tiar)}
+#ti-island.ti-font-digital .ti-np{font-family:'Rubik',var(--tif)}
+
+/* ── Font preset: Papyrus ── */
+#ti-island.ti-font-papyrus .ti-clk,
+#ti-island.ti-font-papyrus .ti-clk .ti-clk-s,
+#ti-island.ti-font-papyrus .ti-en,
+#ti-island.ti-font-papyrus .ti-ar,
+#ti-island.ti-font-papyrus .ti-np{font-family:'Papyrus','Segoe Script','Comic Sans MS',fantasy}
+
 .ti-s{display:flex;align-items:center;gap:6px;padding:6px 14px;border-radius:40px;transition:background .2s;position:relative;white-space:nowrap}
 .ti-s:hover{background:var(--tig)}
 .ti-d{width:1px;height:20px;background:var(--tib);flex-shrink:0}
@@ -114,7 +181,9 @@
 .ti-clk-s{font-size:10px;color:var(--tid);font-weight:400;vertical-align:super;margin-left:1px}
 .ti-en{font-size:12.5px;color:var(--tit);font-weight:500}
 .ti-ar{font-size:13px;color:var(--tia2);font-family:var(--tiar);font-weight:600;direction:rtl}
-.ti-np{font-size:11px;color:var(--tio);font-weight:600;font-family:var(--tim)}
+.ti-np{font-size:11px;color:var(--tio);font-weight:600;font-family:var(--tim);direction:ltr;unicode-bidi:isolate}
+.ti-np-ar{direction:rtl;unicode-bidi:isolate;display:inline}
+.ti-np-ltr{direction:ltr;unicode-bidi:isolate;display:inline}
 
 /* Popups */
 .ti-pop{position:fixed;z-index:2147483647;background:var(--ti);backdrop-filter:blur(24px) saturate(1.8);border:1px solid var(--tib);border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,.4);font-family:var(--tif);color:var(--tit);opacity:0;transform:translateY(-8px);transition:opacity .25s,transform .25s;pointer-events:none}
@@ -147,6 +216,20 @@
 .ti-gcp-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:rgba(66,133,244,.15);border:1px solid rgba(66,133,244,.3);border-radius:20px;color:#8ab4f8;text-decoration:none;font-size:12px;font-weight:600;transition:background .2s}
 .ti-gcp-btn:hover{background:rgba(66,133,244,.25)}
 
+/* Prayer times popup (hover on countdown) */
+.ti-pp{padding:16px;min-width:270px}
+.ti-pp-hdr{text-align:center;margin-bottom:10px}
+.ti-pp-label{font-size:11px;color:var(--tia);font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}
+.ti-pp-hijri{font-size:13px;font-weight:700;color:var(--tia2);font-family:var(--tiar);direction:rtl}
+.ti-pp-city{font-size:11px;color:var(--tid);margin-top:2px}
+.ti-pp-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;direction:rtl}
+.ti-pp-item{background:rgba(0,0,0,.2);border-radius:8px;padding:8px 6px;text-align:center}
+.ti-pp-item.on{background:var(--tir)}
+.ti-pp-item .pp-name{font-size:10px;color:var(--tid);margin-bottom:2px;font-family:var(--tiar)}
+.ti-pp-item .pp-time{font-size:14px;font-weight:700;color:var(--tit);font-family:var(--tim);font-variant-numeric:tabular-nums}
+.ti-pp-item.on .pp-name,.ti-pp-item.on .pp-time{color:#fff}
+.ti-pp-cd{text-align:center;margin-top:10px;padding-top:8px;border-top:1px solid var(--tib);font-family:var(--tim);font-size:13px;color:var(--tio);font-weight:600;direction:ltr;unicode-bidi:isolate}
+
 /* Sidebar */
 #ti-sb{position:fixed;top:0;right:0;width:320px;height:100vh;z-index:2147483645;background:var(--ti);backdrop-filter:blur(24px) saturate(1.8);border-left:1px solid var(--tib);box-shadow:-4px 0 32px rgba(0,0,0,.3);font-family:var(--tif);color:var(--tit);transform:translateX(100%);transition:transform .4s cubic-bezier(.16,1,.3,1);overflow-y:auto;overflow-x:hidden}
 #ti-sb.open{transform:translateX(0)}
@@ -172,7 +255,7 @@
 .ti-pt{font-size:15px;font-weight:700;color:var(--tit);font-family:var(--tim);font-variant-numeric:tabular-nums}
 .ti-phj{text-align:center;direction:rtl;font-family:var(--tiar);font-size:14px;font-weight:700;color:var(--tia2);margin-bottom:4px}
 .ti-pgr{text-align:center;font-size:11px;color:var(--tid);margin-bottom:8px}
-.ti-pcd{text-align:center;font-family:var(--tim);font-size:13px;color:var(--tio);margin-top:8px;font-weight:600}
+.ti-pcd{text-align:center;font-family:var(--tim);font-size:13px;color:var(--tio);margin-top:8px;font-weight:600;direction:ltr;unicode-bidi:isolate}
 .ti-pld{padding:24px;text-align:center;color:var(--tid);font-size:13px}
 
 /* City search */
@@ -220,6 +303,7 @@
 .ti-set-tog::after{content:'';position:absolute;top:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .2s}
 .ti-set-tog.on::after{left:21px}
 .ti-set-tog.off::after{left:3px}
+.ti-set-divider{height:1px;background:var(--tib);margin:6px 0}
 
 /* Links */
 .ti-lnk{display:flex;flex-wrap:wrap;gap:6px}
@@ -260,27 +344,52 @@
   //  §4  BUILD DOM
   // ═══════════════════════════════════════════
 
-  // Island
+  // --- Island ---
   const island=document.createElement('div');
   island.id='ti-island';
-  island.className='ti-'+cfg.islandPos;
-  if(!cfg.showIsland)island.classList.add('ti-hide');
+  // Class list is rebuilt by syncIslandClasses()
   island.innerHTML=`
     <div class="ti-s" id="ti-s-clk"><span class="ti-dot"></span><span class="ti-clk" id="ti-clk"></span></div>
     <div class="ti-d"></div>
-    <div class="ti-s" id="ti-s-en"><span style="font-size:14px;line-height:1">📅</span><span class="ti-en" id="ti-en"></span></div>
+    <div class="ti-s" id="ti-s-en"><span class="ti-emoji" style="font-size:14px;line-height:1">📅</span><span class="ti-en" id="ti-en"></span></div>
     <div class="ti-d"></div>
-    <div class="ti-s" id="ti-s-ar"><span style="font-size:14px;line-height:1">🌙</span><span class="ti-ar" id="ti-ar"></span></div>
+    <div class="ti-s" id="ti-s-ar"><span class="ti-emoji" style="font-size:14px;line-height:1">🌙</span><span class="ti-ar" id="ti-ar"></span></div>
     <div class="ti-d"></div>
-    <div class="ti-s" id="ti-s-np"><span style="font-size:14px;line-height:1">🕌</span><span class="ti-np" id="ti-np"></span></div>`;
+    <div class="ti-s" id="ti-s-np"><span class="ti-emoji" style="font-size:14px;line-height:1">🕌</span><span class="ti-np" id="ti-np"></span></div>`;
   document.body.appendChild(island);
 
-  // Popups
+  /** Rebuild island className + inline bg from cfg — single source of truth */
+  function syncIslandClasses(){
+    let cls='ti-'+cfg.islandPos;
+    if(!cfg.showIsland) cls+=' ti-hide';
+    if(cfg.lockIsland)  cls+=' ti-locked';
+    if(!cfg.showEmojis)  cls+=' ti-no-emoji';
+    if(cfg.islandScale!=='medium') cls+=' ti-scale-'+cfg.islandScale;
+    if(cfg.fontPreset!=='default') cls+=' ti-font-'+cfg.fontPreset;
+    if(cfg.islandBg==='transparent') cls+=' ti-bg-clear';
+    island.className=cls;
+
+    // Inline background — only for custom hex, cleared otherwise
+    if(cfg.islandBg!=='default'&&cfg.islandBg!=='transparent'&&/^#[0-9a-f]{6}$/i.test(cfg.islandBg)){
+      // Apply hex with 88 = ~53% alpha to keep the frosted glass feel
+      island.style.background=cfg.islandBg+'dd';
+      island.style.backdropFilter='blur(24px) saturate(1.8)';
+      island.style.webkitBackdropFilter='blur(24px) saturate(1.8)';
+    }else{
+      island.style.background='';
+      island.style.backdropFilter='';
+      island.style.webkitBackdropFilter='';
+    }
+  }
+  syncIslandClasses();
+
+  // --- Popups ---
   const calPop=document.createElement('div');calPop.className='ti-pop ti-cp';document.body.appendChild(calPop);
   const hijPop=document.createElement('div');hijPop.className='ti-pop ti-hp';document.body.appendChild(hijPop);
   const gcPop=document.createElement('div');gcPop.className='ti-pop ti-gcp';document.body.appendChild(gcPop);
+  const prayPop=document.createElement('div');prayPop.className='ti-pop ti-pp';document.body.appendChild(prayPop);
 
-  // Sidebar
+  // --- Sidebar ---
   const sb=document.createElement('div');
   sb.id='ti-sb';
   sb.innerHTML=`
@@ -317,10 +426,34 @@
     <!-- SETTINGS -->
     <div class="ti-w" id="ti-settings">
       <div class="ti-wt">⚙️ Settings</div>
+
       <div class="ti-set-row"><span class="ti-set-label">Show Island</span><button class="ti-set-tog ${cfg.showIsland?'on':'off'}" id="ti-tog-island"></button></div>
       <div class="ti-set-row"><span class="ti-set-label">Show Clock Widget</span><button class="ti-set-tog ${cfg.showClock?'on':'off'}" id="ti-tog-clock"></button></div>
+      <div class="ti-set-row"><span class="ti-set-label">Lock Island Position</span><button class="ti-set-tog ${cfg.lockIsland?'on':'off'}" id="ti-tog-lock"></button></div>
+      <div class="ti-set-row"><span class="ti-set-label">Show Island Emojis</span><button class="ti-set-tog ${cfg.showEmojis?'on':'off'}" id="ti-tog-emoji"></button></div>
+      <div class="ti-set-row"><span class="ti-set-label">Show Hover Popups</span><button class="ti-set-tog ${cfg.showPopups?'on':'off'}" id="ti-tog-popups"></button></div>
+
+      <div class="ti-set-divider"></div>
+
       <div class="ti-set-row"><span class="ti-set-label">Island Position</span><select class="ti-set-sel" id="ti-sel-pos"><option value="top-center">Top Center</option><option value="top-left">Top Left</option><option value="top-right">Top Right</option><option value="bottom-center">Bottom Center</option></select></div>
-      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;font-size:12px">
+      <div class="ti-set-row"><span class="ti-set-label">Island Scale</span><select class="ti-set-sel" id="ti-sel-scale"><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option><option value="xl">XL</option></select></div>
+      <div class="ti-set-row"><span class="ti-set-label">Font Preset</span><select class="ti-set-sel" id="ti-sel-font"><option value="default">Default</option><option value="digital">Digital</option><option value="papyrus">Papyrus</option></select></div>
+
+      <div class="ti-set-color">
+        <span class="ti-set-color-label">Island Background</span>
+        <div class="ti-set-color-row">
+          <input type="color" class="ti-set-color-pick" id="ti-bg-pick" value="${cfg.islandBg.startsWith('#')?cfg.islandBg:'#0f172a'}">
+          <input type="text" class="ti-set-hex" id="ti-bg-hex" placeholder="#0f172a" maxlength="7" value="${cfg.islandBg.startsWith('#')?cfg.islandBg:''}">
+        </div>
+        <div class="ti-set-color-btns">
+          <button class="ti-set-cbtn${cfg.islandBg==='default'?' active':''}" id="ti-bg-def">Default</button>
+          <button class="ti-set-cbtn${cfg.islandBg==='transparent'?' active':''}" id="ti-bg-clear">Transparent</button>
+        </div>
+      </div>
+
+      <div class="ti-set-divider"></div>
+
+      <div style="display:flex;flex-direction:column;gap:6px;font-size:12px">
         <div style="display:flex;justify-content:space-between;align-items:center"><span style="color:var(--tid)">Toggle Sidebar</span><span><span class="ti-kbd">Alt</span>+<span class="ti-kbd">Ctrl</span></span></div>
         <div style="display:flex;justify-content:space-between;align-items:center"><span style="color:var(--tid)">Toggle Island</span><span><span class="ti-kbd">Alt</span>+<span class="ti-kbd">T</span></span></div>
       </div>
@@ -336,7 +469,7 @@
       <a class="ti-la" href="https://calendar.google.com" target="_blank">Calendar</a>
     </div></div>
 
-    <div class="ti-foot">🏝️ Time Island v4.0</div>`;
+    <div class="ti-foot">🏝️ Time Island v4.2.1</div>`;
   document.body.appendChild(sb);
 
   // ═══════════════════════════════════════════
@@ -351,12 +484,12 @@
   const svg=$('ti-svg'),NS='http://www.w3.org/2000/svg';
   for(let i=0;i<60;i++){const a=i*6*Math.PI/180,hr=i%5===0,l=document.createElementNS(NS,'line'),r1=hr?78:83;l.setAttribute('x1',100+(r1)*Math.sin(a));l.setAttribute('y1',100-r1*Math.cos(a));l.setAttribute('x2',100+88*Math.sin(a));l.setAttribute('y2',100-88*Math.cos(a));l.setAttribute('class',hr?'ti-ckt':'ti-cktm');svg.appendChild(l)}
   for(let i=1;i<=12;i++){const a=i*30*Math.PI/180,t=document.createElementNS(NS,'text');t.setAttribute('x',100+68*Math.sin(a));t.setAttribute('y',100-68*Math.cos(a));t.setAttribute('class','ti-ckn');t.textContent=i;svg.appendChild(t)}
-  const H={};['h','m','s'].forEach(k=>{const l=document.createElementNS(NS,'line');l.setAttribute('x1',100);l.setAttribute('y1',100);l.setAttribute('x2',100);l.setAttribute('y2',100);l.setAttribute('class',k==='h'?'ti-ckh':k==='m'?'ti-ckm':'ti-cks');svg.appendChild(l);H[k]=l});
+  const HN={};['h','m','s'].forEach(k=>{const l=document.createElementNS(NS,'line');l.setAttribute('x1',100);l.setAttribute('y1',100);l.setAttribute('x2',100);l.setAttribute('y2',100);l.setAttribute('class',k==='h'?'ti-ckh':k==='m'?'ti-ckm':'ti-cks');svg.appendChild(l);HN[k]=l});
   const cc=document.createElementNS(NS,'circle');cc.setAttribute('cx',100);cc.setAttribute('cy',100);cc.setAttribute('r',4);cc.setAttribute('class','ti-ckc');svg.appendChild(cc);
   function sH(el,deg,len){const r=deg*Math.PI/180;el.setAttribute('x2',100+len*Math.sin(r));el.setAttribute('y2',100-len*Math.cos(r))}
 
   // ═══════════════════════════════════════════
-  //  §7  CITY SEARCH (from feed pattern)
+  //  §7  CITY SEARCH
   // ═══════════════════════════════════════════
   let hlIdx=-1;
   function cityDisplay(){const c=getCity();return `${c[1]} - ${c[2]}`}
@@ -424,12 +557,25 @@
     R.pg.innerHTML='<div class="ti-pg">'+PRAYERS.map(p=>`<div class="ti-pi${p.key===act?' on':''}"><div class="ti-pn">${p.icon} ${p.ar}</div><div class="ti-pt">${prayerData[p.key]||'--:--'}</div></div>`).join('')+'</div>';
   }
 
+  // ── v4.1.0 FIX: Bidi-safe countdown formatting ──
+  // Arabic text (RTL) and Latin countdown (LTR) are wrapped in
+  // unicode-bidi:isolate spans so the browser's bidi algorithm
+  // never re-orders the dash/colon/numbers into the wrong run.
+  function fmtCountdown(arName, timeStr){
+    return `<span class="ti-np-ar">${escHtml(arName)}</span>`
+         + ` : `
+         + `<span class="ti-np-ltr">${escHtml(timeStr)}</span>`;
+  }
+
   function updCountdown(){
-    const{nxt,nxtM}=getActive();if(!nxt||nxtM<0){R.np.textContent='';R.pcd.textContent='';return}
+    const{nxt,nxtM}=getActive();
+    if(!nxt||nxtM<0){R.np.innerHTML='';R.pcd.innerHTML='';return}
     const h=Math.floor(nxtM/60),m=nxtM%60;
     const s=h>0?`${h}h ${P(m)}m`:`${m}m`;
-    R.np.textContent=`${nxt.ar} -${s}`;
-    R.pcd.textContent=`⏳ ${nxt.ar} بعد ${s}`;
+    // Island: "الفجر : 8h 35m"
+    R.np.innerHTML=fmtCountdown(nxt.ar, s);
+    // Sidebar widget: "⏳ الفجر : 8h 35m"
+    R.pcd.innerHTML=`⏳ ${fmtCountdown(nxt.ar, s)}`;
   }
 
   // ═══════════════════════════════════════════
@@ -478,11 +624,52 @@
     gcPop.innerHTML=`<div class="ti-gcp-title">📅 Today's Schedule</div><div class="ti-gcp-date">${dateStr}</div><a class="ti-gcp-btn" href="${gcUrl}" target="_blank">Open Google Calendar →</a>`;
   }
 
-  // Hover logic
+  // ── Prayer Times popup (hover on countdown section) ──
+  function renderPrayPop(){
+    const city=getCity();
+    if(!prayerData){
+      prayPop.innerHTML='<div style="padding:16px;text-align:center;color:var(--tid);font-size:12px">جاري التحميل...</div>';
+      return;
+    }
+    const{act,nxt,nxtM}=getActive();
+    let h='<div class="ti-pp-hdr"><div class="ti-pp-label">🕌 مواقيت الصلاة</div>';
+    if(prayerHijri)h+=`<div class="ti-pp-hijri">${prayerHijri}</div>`;
+    h+=`<div class="ti-pp-city">${city[2]}</div></div>`;
+    h+='<div class="ti-pp-grid">';
+    PRAYERS.forEach(p=>{
+      h+=`<div class="ti-pp-item${p.key===act?' on':''}"><div class="pp-name">${p.icon} ${p.ar}</div><div class="pp-time">${prayerData[p.key]||'--:--'}</div></div>`;
+    });
+    h+='</div>';
+    if(nxt&&nxtM>=0){
+      const hr=Math.floor(nxtM/60),mn=nxtM%60;
+      const ts=hr>0?`${hr}h ${P(mn)}m`:`${mn}m`;
+      h+=`<div class="ti-pp-cd">${fmtCountdown(nxt.ar,ts)}</div>`;
+    }
+    prayPop.innerHTML=h;
+  }
+
+  // Smart popup positioning: above island when in bottom half, below when in top half.
+  // cfg.showPopups is a master kill-switch — when OFF no popup opens at all.
   function hoverSetup(trigId,popup,renderFn,posRight){
     let timer;
     const trig=document.getElementById(trigId);
-    trig.addEventListener('mouseenter',()=>{clearTimeout(timer);renderFn();const r=trig.getBoundingClientRect();popup.style.top=(r.bottom+10)+'px';if(posRight){popup.style.right='8px';popup.style.left='auto'}else{popup.style.left=Math.max(8,r.left-60)+'px';popup.style.right='auto'}popup.classList.add('show')});
+    trig.addEventListener('mouseenter',()=>{
+      if(!cfg.showPopups)return;
+      clearTimeout(timer);
+      renderFn();
+      const r=trig.getBoundingClientRect();
+      const pH=popup.offsetHeight;
+      const midY=window.innerHeight/2;
+      if(r.top+r.height/2>midY){
+        popup.style.top=Math.max(4,r.top-pH-10)+'px';
+      }else{
+        popup.style.top=(r.bottom+10)+'px';
+      }
+      popup.style.bottom='auto';
+      if(posRight){popup.style.right='8px';popup.style.left='auto'}
+      else{popup.style.left=Math.max(8,r.left-60)+'px';popup.style.right='auto'}
+      popup.classList.add('show');
+    });
     trig.addEventListener('mouseleave',()=>{timer=setTimeout(()=>popup.classList.remove('show'),300)});
     popup.addEventListener('mouseenter',()=>clearTimeout(timer));
     popup.addEventListener('mouseleave',()=>{timer=setTimeout(()=>popup.classList.remove('show'),200)});
@@ -490,6 +677,7 @@
   hoverSetup('ti-s-en',calPop,()=>{initCal();renderCalPop()},false);
   hoverSetup('ti-s-ar',hijPop,renderHijPop,true);
   hoverSetup('ti-s-clk',gcPop,renderGcPop,false);
+  hoverSetup('ti-s-np',prayPop,renderPrayPop,true);
 
   // ═══════════════════════════════════════════
   //  §11  SIDEBAR CALENDAR
@@ -506,8 +694,6 @@
     R.sc.querySelectorAll('.ti-scn').forEach(b=>b.addEventListener('click',()=>{sM+=+b.dataset.d;if(sM>11){sM=0;sY++}else if(sM<0){sM=11;sY--}renderSC()}));
   }
 
-  function renderSbHijri(){/* shown in prayer widget via API */}
-
   // ═══════════════════════════════════════════
   //  §12  STOPWATCH & NOTEPAD
   // ═══════════════════════════════════════════
@@ -523,12 +709,62 @@
   //  §13  SETTINGS
   // ═══════════════════════════════════════════
   $('ti-x').addEventListener('click',()=>sb.classList.remove('open'));
-  $('ti-sel-pos').value=cfg.islandPos;
-  $('ti-sel-pos').addEventListener('change',e=>{
+
+  // --- Select: Island Position ---
+  const selPos=$('ti-sel-pos');
+  selPos.value=cfg.islandPos;
+  selPos.addEventListener('change',e=>{
     cfg.islandPos=e.target.value;gSet('ti_pos',cfg.islandPos);
-    island.className='ti-'+cfg.islandPos;if(!cfg.showIsland)island.classList.add('ti-hide');
+    syncIslandClasses();
   });
 
+  // --- Select: Island Scale ---
+  const selScale=$('ti-sel-scale');
+  selScale.value=cfg.islandScale;
+  selScale.addEventListener('change',e=>{
+    cfg.islandScale=e.target.value;gSet('ti_islandScale',cfg.islandScale);
+    syncIslandClasses();
+  });
+
+  // --- Select: Font Preset ---
+  const selFont=$('ti-sel-font');
+  selFont.value=cfg.fontPreset;
+  selFont.addEventListener('change',e=>{
+    cfg.fontPreset=e.target.value;gSet('ti_fontPreset',cfg.fontPreset);
+    loadFontPreset(cfg.fontPreset);
+    syncIslandClasses();
+  });
+
+  // --- Island Background Color ---
+  const bgPick=$('ti-bg-pick'), bgHex=$('ti-bg-hex'),
+        bgDef=$('ti-bg-def'),   bgClear=$('ti-bg-clear');
+
+  function applyBg(val){
+    cfg.islandBg=val; gSet('ti_islandBg',val);
+    syncIslandClasses();
+    // Update UI active states
+    bgDef.classList.toggle('active', val==='default');
+    bgClear.classList.toggle('active', val==='transparent');
+    // Sync color picker / hex with custom value
+    if(val.startsWith('#')){ bgPick.value=val; bgHex.value=val; }
+  }
+
+  bgPick.addEventListener('input',e=>applyBg(e.target.value));
+  bgHex.addEventListener('input',()=>{
+    let v=bgHex.value.trim();
+    if(v&&!v.startsWith('#')) v='#'+v;
+    if(/^#[0-9a-f]{6}$/i.test(v)){ bgPick.value=v; applyBg(v); }
+  });
+  bgHex.addEventListener('blur',()=>{
+    // Fix partial input on blur
+    if(bgHex.value&&!/^#[0-9a-f]{6}$/i.test(bgHex.value)){
+      bgHex.value=cfg.islandBg.startsWith('#')?cfg.islandBg:'';
+    }
+  });
+  bgDef.addEventListener('click',()=>{ bgHex.value=''; applyBg('default'); });
+  bgClear.addEventListener('click',()=>{ bgHex.value=''; applyBg('transparent'); });
+
+  // --- Toggle helpers ---
   function setupTog(id,key,onToggle){
     const btn=document.getElementById(id);
     btn.addEventListener('click',()=>{
@@ -537,8 +773,12 @@
       onToggle(cfg[key]);
     });
   }
-  setupTog('ti-tog-island','showIsland',v=>{island.classList.toggle('ti-hide',!v)});
+
+  setupTog('ti-tog-island','showIsland',()=>syncIslandClasses());
   setupTog('ti-tog-clock','showClock',v=>{$('ti-clk-w').style.display=v?'':'none'});
+  setupTog('ti-tog-lock','lockIsland',()=>syncIslandClasses());
+  setupTog('ti-tog-emoji','showEmojis',()=>syncIslandClasses());
+  setupTog('ti-tog-popups','showPopups',()=>{});   // live — hoverSetup checks cfg each enter
   if(!cfg.showClock)$('ti-clk-w').style.display='none';
 
   // ═══════════════════════════════════════════
@@ -555,7 +795,7 @@
       const hij=toHijri(now.getFullYear(),now.getMonth(),now.getDate());
       R.ar.textContent=`${hij.day} ${HIJRI_M[hij.month-1]||''} ${hij.year}`;
       R.dig.innerHTML=`${P(h)}:${P(m)}:<span class="ti-dig-s">${P(s)}</span>`;
-      sH(H.h,((h%12)+m/60)*30,42);sH(H.m,(m+s/60)*6,56);sH(H.s,s*6,62);
+      sH(HN.h,((h%12)+m/60)*30,42);sH(HN.m,(m+s/60)*6,56);sH(HN.s,s*6,62);
       updCountdown();
       if(s===0)renderPG();
     }
@@ -567,12 +807,27 @@
   // ═══════════════════════════════════════════
   document.addEventListener('keydown',e=>{
     if(e.altKey&&e.ctrlKey&&!e.shiftKey&&!e.metaKey){e.preventDefault();sb.classList.toggle('open')}
-    if(e.altKey&&!e.ctrlKey&&(e.key==='t'||e.key==='T')){e.preventDefault();cfg.showIsland=!cfg.showIsland;gSet('ti_showIsland',cfg.showIsland);island.classList.toggle('ti-hide',!cfg.showIsland);$('ti-tog-island').className='ti-set-tog '+(cfg.showIsland?'on':'off')}
+    if(e.altKey&&!e.ctrlKey&&(e.key==='t'||e.key==='T')){
+      e.preventDefault();cfg.showIsland=!cfg.showIsland;gSet('ti_showIsland',cfg.showIsland);
+      syncIslandClasses();
+      $('ti-tog-island').className='ti-set-tog '+(cfg.showIsland?'on':'off');
+    }
   });
 
+  // Drag — disabled when cfg.lockIsland is true
   let drag=false,dx=0,dy=0;
-  island.addEventListener('mousedown',e=>{if(e.target.closest('button'))return;drag=true;const r=island.getBoundingClientRect();dx=e.clientX-r.left;dy=e.clientY-r.top;island.style.transition='none';island.style.cursor='grabbing'});
-  document.addEventListener('mousemove',e=>{if(!drag)return;island.style.left=(e.clientX-dx)+'px';island.style.top=(e.clientY-dy)+'px';island.style.bottom='auto';island.style.right='auto';island.style.transform='none'});
+  island.addEventListener('mousedown',e=>{
+    if(cfg.lockIsland||e.target.closest('button'))return;   // ← lock check
+    drag=true;const r=island.getBoundingClientRect();
+    dx=e.clientX-r.left;dy=e.clientY-r.top;
+    island.style.transition='none';island.style.cursor='grabbing';
+  });
+  document.addEventListener('mousemove',e=>{
+    if(!drag)return;
+    island.style.left=(e.clientX-dx)+'px';
+    island.style.top=(e.clientY-dy)+'px';
+    island.style.bottom='auto';island.style.right='auto';island.style.transform='none';
+  });
   document.addEventListener('mouseup',()=>{if(!drag)return;drag=false;island.style.transition='';island.style.cursor=''});
 
   // ═══════════════════════════════════════════
