@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         🏝️ Time Island & Sidebar Widgets v4
 // @namespace    https://achma-learning.github.io/
-// @version      4.2.1
-// @description  Floating island + sidebar: prayer times, weather, calendar, settings, quick links. Lock/scale/font-preset island. Alt+Ctrl=sidebar, Alt+T=island.
+// @version      4.3.0
+// @description  Floating island + sidebar: prayer times, weather, calendar, settings, editable quick links. Section toggles, blur slider, lock/scale/font-preset. Alt+Ctrl=sidebar, Alt+T=island.
 // @author       Achma
 // @match        *://*/*
 // @grant        GM_addStyle
@@ -83,6 +83,8 @@
   let prayerData = null;
   let prayerHijri = '';
   let swOn=false,swT0=0,swE=0,swI=null;
+  let prayGlow=false;                     // transient — true when within GLOW_MIN of adhan
+  const GLOW_MIN=15;                      // glow lasts 15 minutes after each prayer time
   const cfg = {
     islandPos:   gGet('ti_pos','top-center'),
     showIsland:  gGet('ti_showIsland', true),
@@ -93,7 +95,19 @@
     showEmojis:  gGet('ti_showEmojis', true),
     showPopups:  gGet('ti_showPopups', true),
     islandBg:    gGet('ti_islandBg', 'default'),     // 'default' | 'transparent' | '#rrggbb'
+    islandBlur:  gGet('ti_islandBlur', 24),           // 0-40 px (#9)
+    secClk:      gGet('ti_secClk', true),             // island section toggles (#6)
+    secDate:     gGet('ti_secDate', true),
+    secHijri:    gGet('ti_secHijri', true),
+    secPray:     gGet('ti_secPray', true),
   };
+
+  const DEFAULT_LINKS=[
+    {n:'Google',u:'https://www.google.com'},{n:'MAP',u:'https://www.mapnews.ma/ar/'},
+    {n:'Mawaqit',u:'https://mawaqit.net'},{n:'Hespress',u:'https://en.hespress.com/'},
+    {n:'Feed',u:'https://achma-learning.github.io/feed/'},{n:'Calendar',u:'https://calendar.google.com'},
+  ];
+  let userLinks=JSON.parse(gGet('ti_links',JSON.stringify(DEFAULT_LINKS)));
 
   function getCity(){ return CITIES[selCity] || CITIES.find(c=>c[3]==='Marrakech') || CITIES[0]; }
 
@@ -140,7 +154,34 @@
 #ti-island.ti-no-emoji .ti-emoji{display:none}
 
 /* ── Transparent island bg ── */
-#ti-island.ti-bg-clear{background:transparent!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;border-color:rgba(255,255,255,.08)!important;box-shadow:none!important}
+#ti-island.ti-bg-clear{background:transparent!important;border-color:rgba(255,255,255,.08)!important;box-shadow:none!important}
+
+/* ── Prayer time glow — animated white/purple/gold border ── */
+@keyframes tiPrayGlow{
+  0%,100%{border-color:rgba(255,255,255,.9);box-shadow:0 0 18px rgba(255,255,255,.25),0 8px 32px rgba(0,0,0,.4)}
+  33%{border-color:rgba(167,139,250,.9);box-shadow:0 0 18px rgba(167,139,250,.3),0 8px 32px rgba(0,0,0,.4)}
+  66%{border-color:rgba(250,204,21,.9);box-shadow:0 0 18px rgba(250,204,21,.25),0 8px 32px rgba(0,0,0,.4)}
+}
+#ti-island.ti-pray-glow{animation:tiPrayGlow 3s ease-in-out infinite;border-width:1.5px}
+
+/* ── Blur slider ── */
+.ti-set-range-row{display:flex;align-items:center;gap:8px;padding:4px 0}
+.ti-set-range{flex:1;-webkit-appearance:none;height:4px;background:var(--tib);border-radius:2px;outline:none}
+.ti-set-range::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--tia);cursor:pointer}
+.ti-set-range::-moz-range-thumb{width:14px;height:14px;border:none;border-radius:50%;background:var(--tia);cursor:pointer}
+.ti-set-range-val{font-size:11px;font-family:var(--tim);color:var(--tid);min-width:32px;text-align:right}
+
+/* ── Quick Links editor ── */
+.ti-lnk-wrap{display:flex;flex-direction:column;gap:8px}
+.ti-lnk-list{display:flex;flex-wrap:wrap;gap:6px}
+.ti-la-del{display:none;margin-left:2px;color:rgba(248,113,113,.8);font-size:13px;cursor:pointer;line-height:1}
+.ti-la:hover .ti-la-del{display:inline}
+.ti-lnk-add{display:flex;gap:6px;align-items:center}
+.ti-lnk-inp{flex:1;background:rgba(0,0,0,.2);border:1px solid var(--tib);color:var(--tit);padding:5px 8px;border-radius:6px;font-size:11px;font-family:var(--tif);outline:none}
+.ti-lnk-inp:focus{border-color:var(--tia)}
+.ti-lnk-inp::placeholder{color:rgba(148,163,184,.4)}
+.ti-lnk-btn{padding:5px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid var(--tia);background:rgba(56,189,248,.1);color:var(--tia);transition:background .2s}
+.ti-lnk-btn:hover{background:rgba(56,189,248,.2)}
 
 /* ── Color picker row ── */
 .ti-set-color{display:flex;flex-direction:column;gap:8px;padding:8px 0}
@@ -349,16 +390,16 @@
   island.id='ti-island';
   // Class list is rebuilt by syncIslandClasses()
   island.innerHTML=`
-    <div class="ti-s" id="ti-s-clk"><span class="ti-dot"></span><span class="ti-clk" id="ti-clk"></span></div>
-    <div class="ti-d"></div>
-    <div class="ti-s" id="ti-s-en"><span class="ti-emoji" style="font-size:14px;line-height:1">📅</span><span class="ti-en" id="ti-en"></span></div>
-    <div class="ti-d"></div>
-    <div class="ti-s" id="ti-s-ar"><span class="ti-emoji" style="font-size:14px;line-height:1">🌙</span><span class="ti-ar" id="ti-ar"></span></div>
-    <div class="ti-d"></div>
-    <div class="ti-s" id="ti-s-np"><span class="ti-emoji" style="font-size:14px;line-height:1">🕌</span><span class="ti-np" id="ti-np"></span></div>`;
+    <div class="ti-s" id="ti-s-clk" data-sec="clk"><span class="ti-dot"></span><span class="ti-clk" id="ti-clk"></span></div>
+    <div class="ti-d" data-sep="clk-date"></div>
+    <div class="ti-s" id="ti-s-en" data-sec="date"><span class="ti-emoji" style="font-size:14px;line-height:1">📅</span><span class="ti-en" id="ti-en"></span></div>
+    <div class="ti-d" data-sep="date-hijri"></div>
+    <div class="ti-s" id="ti-s-ar" data-sec="hijri"><span class="ti-emoji" style="font-size:14px;line-height:1">🌙</span><span class="ti-ar" id="ti-ar"></span></div>
+    <div class="ti-d" data-sep="hijri-pray"></div>
+    <div class="ti-s" id="ti-s-np" data-sec="pray"><span class="ti-emoji" style="font-size:14px;line-height:1">🕌</span><span class="ti-np" id="ti-np"></span></div>`;
   document.body.appendChild(island);
 
-  /** Rebuild island className + inline bg from cfg — single source of truth */
+  /** Rebuild island className + inline styles from cfg — single source of truth */
   function syncIslandClasses(){
     let cls='ti-'+cfg.islandPos;
     if(!cfg.showIsland) cls+=' ti-hide';
@@ -367,19 +408,43 @@
     if(cfg.islandScale!=='medium') cls+=' ti-scale-'+cfg.islandScale;
     if(cfg.fontPreset!=='default') cls+=' ti-font-'+cfg.fontPreset;
     if(cfg.islandBg==='transparent') cls+=' ti-bg-clear';
+    if(prayGlow) cls+=' ti-pray-glow';
     island.className=cls;
 
-    // Inline background — only for custom hex, cleared otherwise
+    // Inline blur (#9) — applies to all bg modes
+    const blurVal=`blur(${cfg.islandBlur}px) saturate(1.8)`;
     if(cfg.islandBg!=='default'&&cfg.islandBg!=='transparent'&&/^#[0-9a-f]{6}$/i.test(cfg.islandBg)){
-      // Apply hex with 88 = ~53% alpha to keep the frosted glass feel
       island.style.background=cfg.islandBg+'dd';
-      island.style.backdropFilter='blur(24px) saturate(1.8)';
-      island.style.webkitBackdropFilter='blur(24px) saturate(1.8)';
+      island.style.backdropFilter=blurVal;
+      island.style.webkitBackdropFilter=blurVal;
+    }else if(cfg.islandBg==='transparent'){
+      island.style.background='';
+      island.style.backdropFilter=cfg.islandBlur>0?blurVal:'none';
+      island.style.webkitBackdropFilter=cfg.islandBlur>0?blurVal:'none';
     }else{
       island.style.background='';
-      island.style.backdropFilter='';
-      island.style.webkitBackdropFilter='';
+      island.style.backdropFilter=blurVal;
+      island.style.webkitBackdropFilter=blurVal;
     }
+
+    // Section visibility (#6) — show/hide sections + dividers
+    syncIslandSections();
+  }
+
+  /** Show/hide island sections and their adjacent dividers */
+  function syncIslandSections(){
+    const secMap={clk:cfg.secClk,date:cfg.secDate,hijri:cfg.secHijri,pray:cfg.secPray};
+    const order=['clk','date','hijri','pray'];
+    // Hide/show each section
+    order.forEach(k=>{
+      const el=island.querySelector(`[data-sec="${k}"]`);
+      if(el) el.style.display=secMap[k]?'':'none';
+    });
+    // Divider visible only when both its neighbours are visible
+    island.querySelectorAll('[data-sep]').forEach(div=>{
+      const[a,b]=div.dataset.sep.split('-');
+      div.style.display=(secMap[a]&&secMap[b])?'':'none';
+    });
   }
   syncIslandClasses();
 
@@ -434,10 +499,19 @@
       <div class="ti-set-row"><span class="ti-set-label">Show Hover Popups</span><button class="ti-set-tog ${cfg.showPopups?'on':'off'}" id="ti-tog-popups"></button></div>
 
       <div class="ti-set-divider"></div>
+      <div style="font-size:10px;font-weight:600;color:var(--tid);text-transform:uppercase;letter-spacing:1px;margin:2px 0 4px">Island Sections</div>
+      <div class="ti-set-row"><span class="ti-set-label">🕐 Clock</span><button class="ti-set-tog ${cfg.secClk?'on':'off'}" id="ti-tog-secClk"></button></div>
+      <div class="ti-set-row"><span class="ti-set-label">📅 English Date</span><button class="ti-set-tog ${cfg.secDate?'on':'off'}" id="ti-tog-secDate"></button></div>
+      <div class="ti-set-row"><span class="ti-set-label">🌙 Hijri Date</span><button class="ti-set-tog ${cfg.secHijri?'on':'off'}" id="ti-tog-secHijri"></button></div>
+      <div class="ti-set-row"><span class="ti-set-label">🕌 Prayer Countdown</span><button class="ti-set-tog ${cfg.secPray?'on':'off'}" id="ti-tog-secPray"></button></div>
+
+      <div class="ti-set-divider"></div>
 
       <div class="ti-set-row"><span class="ti-set-label">Island Position</span><select class="ti-set-sel" id="ti-sel-pos"><option value="top-center">Top Center</option><option value="top-left">Top Left</option><option value="top-right">Top Right</option><option value="bottom-center">Bottom Center</option></select></div>
       <div class="ti-set-row"><span class="ti-set-label">Island Scale</span><select class="ti-set-sel" id="ti-sel-scale"><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option><option value="xl">XL</option></select></div>
       <div class="ti-set-row"><span class="ti-set-label">Font Preset</span><select class="ti-set-sel" id="ti-sel-font"><option value="default">Default</option><option value="digital">Digital</option><option value="papyrus">Papyrus</option></select></div>
+
+      <div class="ti-set-row"><span class="ti-set-label">Blur</span><div class="ti-set-range-row"><input type="range" class="ti-set-range" id="ti-rng-blur" min="0" max="40" value="${cfg.islandBlur}"><span class="ti-set-range-val" id="ti-blur-val">${cfg.islandBlur}px</span></div></div>
 
       <div class="ti-set-color">
         <span class="ti-set-color-label">Island Background</span>
@@ -459,17 +533,19 @@
       </div>
     </div>
 
-    <!-- LINKS -->
-    <div class="ti-w"><div class="ti-wt">🔗 Quick Links</div><div class="ti-lnk">
-      <a class="ti-la" href="https://www.google.com" target="_blank">Google</a>
-      <a class="ti-la" href="https://www.mapnews.ma/ar/" target="_blank">MAP</a>
-      <a class="ti-la" href="https://mawaqit.net" target="_blank">Mawaqit</a>
-      <a class="ti-la" href="https://en.hespress.com/" target="_blank">Hespress</a>
-      <a class="ti-la" href="https://achma-learning.github.io/feed/" target="_blank">Feed</a>
-      <a class="ti-la" href="https://calendar.google.com" target="_blank">Calendar</a>
-    </div></div>
+    <!-- LINKS (dynamic #7) -->
+    <div class="ti-w" id="ti-lnk-w"><div class="ti-wt">🔗 Quick Links</div>
+      <div class="ti-lnk-wrap">
+        <div class="ti-lnk-list" id="ti-lnk-list"></div>
+        <div class="ti-lnk-add">
+          <input class="ti-lnk-inp" id="ti-lnk-name" placeholder="Name">
+          <input class="ti-lnk-inp" id="ti-lnk-url" placeholder="https://..." style="flex:2">
+          <button class="ti-lnk-btn" id="ti-lnk-add">+</button>
+        </div>
+      </div>
+    </div>
 
-    <div class="ti-foot">🏝️ Time Island v4.2.1</div>`;
+    <div class="ti-foot">🏝️ Time Island v4.3.0</div>`;
   document.body.appendChild(sb);
 
   // ═══════════════════════════════════════════
@@ -568,7 +644,7 @@
   }
 
   function updCountdown(){
-    const{nxt,nxtM}=getActive();
+    const{act,nxt,nxtM}=getActive();
     if(!nxt||nxtM<0){R.np.innerHTML='';R.pcd.innerHTML='';return}
     const h=Math.floor(nxtM/60),m=nxtM%60;
     const s=h>0?`${h}h ${P(m)}m`:`${m}m`;
@@ -576,6 +652,21 @@
     R.np.innerHTML=fmtCountdown(nxt.ar, s);
     // Sidebar widget: "⏳ الفجر : 8h 35m"
     R.pcd.innerHTML=`⏳ ${fmtCountdown(nxt.ar, s)}`;
+
+    // ── Prayer glow: light up border for GLOW_MIN after each adhan ──
+    let glowNow=false;
+    if(act&&prayerData&&prayerData[act]){
+      const now=new Date(), nm=now.getHours()*60+now.getMinutes();
+      const actT=tMin(prayerData[act]);
+      // Minutes since this prayer started (handle midnight wrap for Isha)
+      const elapsed = nm >= actT ? nm - actT : (1440 - actT) + nm;
+      // Exclude Sunrise — it's not a prayer, just an informational time
+      glowNow = act !== 'Sunrise' && elapsed < GLOW_MIN;
+    }
+    if(glowNow!==prayGlow){
+      prayGlow=glowNow;
+      syncIslandClasses();   // only rebuilds on actual transition
+    }
   }
 
   // ═══════════════════════════════════════════
@@ -778,8 +869,47 @@
   setupTog('ti-tog-clock','showClock',v=>{$('ti-clk-w').style.display=v?'':'none'});
   setupTog('ti-tog-lock','lockIsland',()=>syncIslandClasses());
   setupTog('ti-tog-emoji','showEmojis',()=>syncIslandClasses());
-  setupTog('ti-tog-popups','showPopups',()=>{});   // live — hoverSetup checks cfg each enter
+  setupTog('ti-tog-popups','showPopups',()=>{});
+  // Section toggles (#6)
+  setupTog('ti-tog-secClk','secClk',()=>syncIslandClasses());
+  setupTog('ti-tog-secDate','secDate',()=>syncIslandClasses());
+  setupTog('ti-tog-secHijri','secHijri',()=>syncIslandClasses());
+  setupTog('ti-tog-secPray','secPray',()=>syncIslandClasses());
   if(!cfg.showClock)$('ti-clk-w').style.display='none';
+
+  // --- Blur slider (#9) ---
+  const rngBlur=$('ti-rng-blur'), blurVal=$('ti-blur-val');
+  rngBlur.addEventListener('input',()=>{
+    cfg.islandBlur=+rngBlur.value; gSet('ti_islandBlur',cfg.islandBlur);
+    blurVal.textContent=cfg.islandBlur+'px';
+    syncIslandClasses();
+  });
+
+  // --- Quick Links CRUD (#7) ---
+  function renderLinks(){
+    const list=$('ti-lnk-list');
+    list.innerHTML=userLinks.map((lk,i)=>
+      `<a class="ti-la" href="${escHtml(lk.u)}" target="_blank">${escHtml(lk.n)}<span class="ti-la-del" data-i="${i}">✕</span></a>`
+    ).join('');
+    list.querySelectorAll('.ti-la-del').forEach(btn=>{
+      btn.addEventListener('click',e=>{
+        e.preventDefault();e.stopPropagation();
+        userLinks.splice(+btn.dataset.i,1);
+        gSet('ti_links',JSON.stringify(userLinks));
+        renderLinks();
+      });
+    });
+  }
+  renderLinks();
+  $('ti-lnk-add').addEventListener('click',()=>{
+    const nameEl=$('ti-lnk-name'),urlEl=$('ti-lnk-url');
+    const n=nameEl.value.trim(), u=urlEl.value.trim();
+    if(!n||!u)return;
+    userLinks.push({n,u});
+    gSet('ti_links',JSON.stringify(userLinks));
+    nameEl.value='';urlEl.value='';
+    renderLinks();
+  });
 
   // ═══════════════════════════════════════════
   //  §14  MAIN TICK (requestAnimationFrame)
@@ -815,17 +945,20 @@
   });
 
   // Drag — disabled when cfg.lockIsland is true
+  // #8 FIX: clamp to viewport bounds using visual (post-zoom) dimensions
   let drag=false,dx=0,dy=0;
   island.addEventListener('mousedown',e=>{
-    if(cfg.lockIsland||e.target.closest('button'))return;   // ← lock check
+    if(cfg.lockIsland||e.target.closest('button'))return;
     drag=true;const r=island.getBoundingClientRect();
     dx=e.clientX-r.left;dy=e.clientY-r.top;
     island.style.transition='none';island.style.cursor='grabbing';
   });
   document.addEventListener('mousemove',e=>{
     if(!drag)return;
-    island.style.left=(e.clientX-dx)+'px';
-    island.style.top=(e.clientY-dy)+'px';
+    const r=island.getBoundingClientRect();
+    const x=Math.max(0,Math.min(e.clientX-dx, window.innerWidth-r.width));
+    const y=Math.max(0,Math.min(e.clientY-dy, window.innerHeight-r.height));
+    island.style.left=x+'px';island.style.top=y+'px';
     island.style.bottom='auto';island.style.right='auto';island.style.transform='none';
   });
   document.addEventListener('mouseup',()=>{if(!drag)return;drag=false;island.style.transition='';island.style.cursor=''});
