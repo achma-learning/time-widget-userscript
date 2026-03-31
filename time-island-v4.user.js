@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         🏝️ Time Island & Sidebar Widgets v4
 // @namespace    https://achma-learning.github.io/
-// @version      4.3.0
-// @description  Floating island + sidebar: prayer times, weather, calendar, settings, editable quick links. Section toggles, blur slider, lock/scale/font-preset. Alt+Ctrl=sidebar, Alt+T=island.
+// @version      4.3.1
+// @description  A floating pill-shaped island (top-center, draggable) showing live clock, English/Arabic/Hijri dates, and next-prayer countdown — plus a collapsible sidebar with prayer times for 35+ Moroccan cities (AlAdhan API, Habous method), live weather (wttr.in), monthly calendar, analog clock, stopwatch, quick notes, and fully editable quick links. Features: auto-hide (Windows-style), section show/hide, lock position, 4 scale presets, 3 font presets, custom background color/transparent/blur slider, emoji toggle, prayer-time border glow. Keyboard: Alt+Ctrl = sidebar, Alt+T = island.
 // @author       Achma
 // @match        *://*/*
 // @grant        GM_addStyle
@@ -65,7 +65,7 @@
   const tMin=s=>{if(!s)return-1;const p=s.split(':');return+p[0]*60+(+p[1])};
   const norm=s=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
   // XSS-safe: only our own hardcoded prayer names ever go through innerHTML below
-  const escHtml=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const escHtml=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
   function toHijri(gY,gM,gD){
     const a=Math.floor((14-(gM+1))/12),y=gY+4800-a,m=(gM+1)+12*a-3;
@@ -100,6 +100,7 @@
     secDate:     gGet('ti_secDate', true),
     secHijri:    gGet('ti_secHijri', true),
     secPray:     gGet('ti_secPray', true),
+    autoHide:    gGet('ti_autoHide', false),           // Windows-style auto-hide
   };
 
   const DEFAULT_LINKS=[
@@ -139,6 +140,14 @@
 #ti-island.ti-bottom-center{bottom:12px;top:auto;left:50%;transform:translateX(-50%)}
 #ti-island.ti-hide{opacity:0!important;pointer-events:none!important;transform:translateY(-30px)!important}
 #ti-island:hover{box-shadow:0 8px 32px rgba(0,0,0,.4),0 0 24px rgba(56,189,248,.12)}
+
+/* ── Auto-hide (Windows-style) ── */
+#ti-island.ti-auto-out.ti-top-center,
+#ti-island.ti-auto-out.ti-top-left,
+#ti-island.ti-auto-out.ti-top-right{transform:translateY(calc(-100% - 16px))!important;opacity:.15!important;pointer-events:none!important}
+#ti-island.ti-auto-out.ti-bottom-center{transform:translateY(calc(100% + 16px))!important;opacity:.15!important;pointer-events:none!important}
+#ti-hotzone{position:fixed;z-index:2147483644;display:none}
+#ti-hotzone.active{display:block}
 @keyframes tiIn{from{opacity:0;transform:translateY(-30px) scale(.92)}}
 
 /* ── Island scale (zoom is spec-standard since 2024) ── */
@@ -448,6 +457,42 @@
   }
   syncIslandClasses();
 
+  // --- Auto-hide hotzone (Windows-style) ---
+  const hotzone=document.createElement('div');
+  hotzone.id='ti-hotzone';
+  document.body.appendChild(hotzone);
+  let autoTimer=null;
+
+  /** Position the invisible hotzone strip at the island's edge */
+  function syncHotzone(){
+    if(!cfg.autoHide){hotzone.classList.remove('active');island.classList.remove('ti-auto-out');return}
+    hotzone.classList.add('active');
+    const isBottom=cfg.islandPos==='bottom-center';
+    Object.assign(hotzone.style,{
+      left:'0',right:'0',width:'100%',height:'14px',
+      top:isBottom?'':'0',bottom:isBottom?'0':'',
+    });
+    // Start hidden after brief delay
+    clearTimeout(autoTimer);
+    autoTimer=setTimeout(()=>{island.classList.add('ti-auto-out')},1200);
+  }
+
+  function autoHideShow(){
+    clearTimeout(autoTimer);
+    island.classList.remove('ti-auto-out');
+  }
+  function autoHideHide(){
+    if(!cfg.autoHide)return;
+    clearTimeout(autoTimer);
+    autoTimer=setTimeout(()=>{island.classList.add('ti-auto-out')},600);
+  }
+
+  hotzone.addEventListener('mouseenter',autoHideShow);
+  hotzone.addEventListener('mouseleave',autoHideHide);
+  island.addEventListener('mouseenter',()=>{if(cfg.autoHide)autoHideShow()});
+  island.addEventListener('mouseleave',()=>{if(cfg.autoHide)autoHideHide()});
+  if(cfg.autoHide)syncHotzone();
+
   // --- Popups ---
   const calPop=document.createElement('div');calPop.className='ti-pop ti-cp';document.body.appendChild(calPop);
   const hijPop=document.createElement('div');hijPop.className='ti-pop ti-hp';document.body.appendChild(hijPop);
@@ -497,6 +542,7 @@
       <div class="ti-set-row"><span class="ti-set-label">Lock Island Position</span><button class="ti-set-tog ${cfg.lockIsland?'on':'off'}" id="ti-tog-lock"></button></div>
       <div class="ti-set-row"><span class="ti-set-label">Show Island Emojis</span><button class="ti-set-tog ${cfg.showEmojis?'on':'off'}" id="ti-tog-emoji"></button></div>
       <div class="ti-set-row"><span class="ti-set-label">Show Hover Popups</span><button class="ti-set-tog ${cfg.showPopups?'on':'off'}" id="ti-tog-popups"></button></div>
+      <div class="ti-set-row"><span class="ti-set-label">Auto-Hide Island</span><button class="ti-set-tog ${cfg.autoHide?'on':'off'}" id="ti-tog-autohide"></button></div>
 
       <div class="ti-set-divider"></div>
       <div style="font-size:10px;font-weight:600;color:var(--tid);text-transform:uppercase;letter-spacing:1px;margin:2px 0 4px">Island Sections</div>
@@ -540,12 +586,12 @@
         <div class="ti-lnk-add">
           <input class="ti-lnk-inp" id="ti-lnk-name" placeholder="Name">
           <input class="ti-lnk-inp" id="ti-lnk-url" placeholder="https://..." style="flex:2">
-          <button class="ti-lnk-btn" id="ti-lnk-add">+</button>
+          <button type="button" class="ti-lnk-btn" id="ti-lnk-addbtn">+</button>
         </div>
       </div>
     </div>
 
-    <div class="ti-foot">🏝️ Time Island v4.3.0</div>`;
+    <div class="ti-foot">🏝️ Time Island v4.3.1</div>`;
   document.body.appendChild(sb);
 
   // ═══════════════════════════════════════════
@@ -870,6 +916,9 @@
   setupTog('ti-tog-lock','lockIsland',()=>syncIslandClasses());
   setupTog('ti-tog-emoji','showEmojis',()=>syncIslandClasses());
   setupTog('ti-tog-popups','showPopups',()=>{});
+  setupTog('ti-tog-autohide','autoHide',v=>{
+    if(v){syncHotzone()}else{hotzone.classList.remove('active');island.classList.remove('ti-auto-out')}
+  });
   // Section toggles (#6)
   setupTog('ti-tog-secClk','secClk',()=>syncIslandClasses());
   setupTog('ti-tog-secDate','secDate',()=>syncIslandClasses());
@@ -901,7 +950,8 @@
     });
   }
   renderLinks();
-  $('ti-lnk-add').addEventListener('click',()=>{
+
+  function addLink(){
     const nameEl=$('ti-lnk-name'),urlEl=$('ti-lnk-url');
     const n=nameEl.value.trim(), u=urlEl.value.trim();
     if(!n||!u)return;
@@ -909,7 +959,10 @@
     gSet('ti_links',JSON.stringify(userLinks));
     nameEl.value='';urlEl.value='';
     renderLinks();
-  });
+  }
+  $('ti-lnk-addbtn').addEventListener('click',addLink);
+  $('ti-lnk-name').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();addLink()}});
+  $('ti-lnk-url').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();addLink()}});
 
   // ═══════════════════════════════════════════
   //  §14  MAIN TICK (requestAnimationFrame)
