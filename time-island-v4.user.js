@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         🏝️ Time Island & Sidebar Widgets v4
 // @namespace    https://achma-learning.github.io/
-// @version      4.3.1
-// @description  A floating pill-shaped island (top-center, draggable) showing live clock, English/Arabic/Hijri dates, and next-prayer countdown — plus a collapsible sidebar with prayer times for 35+ Moroccan cities (AlAdhan API, Habous method), live weather (wttr.in), monthly calendar, analog clock, stopwatch, quick notes, and fully editable quick links. Features: auto-hide (Windows-style), section show/hide, lock position, 4 scale presets, 3 font presets, custom background color/transparent/blur slider, emoji toggle, prayer-time border glow. Keyboard: Alt+Ctrl = sidebar, Alt+T = island.
+// @version      4.5.0
+// @description  Floating island with clock, dates (EN/Hijri), prayer countdown, live age + sidebar: prayer times (35 Moroccan cities), weather, calendar, life-in-weeks grid, live age counter, stopwatch, notes, editable links. Auto-hide, section toggles, scale/font/blur/color presets, prayer glow. Alt+Ctrl=sidebar, Alt+T=island.
 // @author       Achma
 // @match        *://*/*
 // @grant        GM_addStyle
@@ -101,6 +101,12 @@
     secHijri:    gGet('ti_secHijri', true),
     secPray:     gGet('ti_secPray', true),
     autoHide:    gGet('ti_autoHide', false),           // Windows-style auto-hide
+    showLifeCal: gGet('ti_showLifeCal', true),
+    lifeBday:    gGet('ti_lifeBday', ''),               // ISO date string e.g. '2000-01-15'
+    lifeExpect:  gGet('ti_lifeExpect', 80),             // years
+    glowDur:     gGet('ti_glowDur', 3),                // 1 | 3 | 5 seconds
+    showLiveAge: gGet('ti_showLiveAge', true),
+    secAge:      gGet('ti_secAge', false),              // live age section on island
   };
 
   const DEFAULT_LINKS=[
@@ -172,6 +178,14 @@
   66%{border-color:rgba(250,204,21,.9);box-shadow:0 0 18px rgba(250,204,21,.25),0 8px 32px rgba(0,0,0,.4)}
 }
 #ti-island.ti-pray-glow{animation:tiPrayGlow 3s ease-in-out infinite;border-width:1.5px}
+
+/* ── Live Age (island + sidebar) ── */
+.ti-age{font-size:11px;color:var(--tig2);font-weight:600;font-family:var(--tim);white-space:nowrap}
+.ti-age-w{text-align:center;padding:4px 0}
+.ti-age-live{font-family:var(--tim);font-size:28px;font-weight:700;color:var(--tit);line-height:1.3;letter-spacing:.5px}
+.ti-age-live span{color:var(--tid);font-size:11px;font-weight:400}
+.ti-age-sub{font-size:11px;color:var(--tid);margin-top:4px}
+.ti-age-prompt{text-align:center;padding:14px 10px;color:var(--tid);font-size:12px}
 
 /* ── Blur slider ── */
 .ti-set-range-row{display:flex;align-items:center;gap:8px;padding:4px 0}
@@ -388,6 +402,31 @@
 .ti-ckn{fill:var(--tid);font-size:10px;font-family:var(--tif);font-weight:600;text-anchor:middle;dominant-baseline:central}
 .ti-dig{font-family:var(--tim);font-size:22px;font-weight:600;color:var(--tit);margin-top:8px;letter-spacing:1px;text-align:center}
 .ti-dig-s{font-size:13px;color:var(--tid)}
+
+/* ── Life Calendar ── */
+.ti-lc-row{display:flex;gap:6px;align-items:center;justify-content:center;margin-bottom:6px}
+.ti-lc-input{background:rgba(0,0,0,.2);border:1px solid var(--tib);color:var(--tit);padding:4px 6px;border-radius:6px;font-size:11px;font-family:var(--tim);outline:none;text-align:center;transition:border-color .2s}
+.ti-lc-input:focus{border-color:var(--tia)}
+.ti-lc-input[type="number"]{width:48px}
+.ti-lc-stats{display:flex;justify-content:center;gap:10px;margin:6px 0 4px;font-size:10px}
+.ti-lc-stat{text-align:center}
+.ti-lc-stat-val{font-size:13px;font-weight:700;font-family:var(--tim);line-height:1.2}
+.ti-lc-stat-val.lived{color:var(--tia)}
+.ti-lc-stat-val.left{color:var(--tig2)}
+.ti-lc-stat-val.pct{color:var(--tia2)}
+.ti-lc-stat-lbl{color:var(--tid);font-size:8px;text-transform:uppercase;letter-spacing:.5px}
+.ti-lc-bar{height:4px;border-radius:2px;background:rgba(255,255,255,.06);margin:4px 0 8px;overflow:hidden}
+.ti-lc-bar-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--tia),var(--tia2));transition:width .5s ease}
+.ti-lc-grid-wrap{position:relative}
+.ti-lc-grid{display:grid;grid-template-columns:repeat(52,1fr);gap:0}
+.ti-lc-wk{width:100%;height:3px;border-radius:0;background:rgba(255,255,255,.06)}
+.ti-lc-wk.lived{background:var(--tia)}
+.ti-lc-wk.cur{background:var(--tio);box-shadow:0 0 3px rgba(251,146,60,.6)}
+.ti-lc-wk:hover{outline:1px solid rgba(255,255,255,.4);border-radius:1px;z-index:1;position:relative}
+.ti-lc-wk.decade{border-top:1px solid rgba(148,163,184,.2)}
+.ti-lc-legend{display:flex;justify-content:center;gap:10px;margin-top:6px;font-size:8px;color:var(--tid)}
+.ti-lc-leg-dot{display:inline-block;width:7px;height:7px;border-radius:1px;margin-right:3px;vertical-align:middle}
+.ti-lc-prompt{text-align:center;padding:16px 10px;color:var(--tid);font-size:12px}
   `);
 
   // ═══════════════════════════════════════════
@@ -405,7 +444,9 @@
     <div class="ti-d" data-sep="date-hijri"></div>
     <div class="ti-s" id="ti-s-ar" data-sec="hijri"><span class="ti-emoji" style="font-size:14px;line-height:1">🌙</span><span class="ti-ar" id="ti-ar"></span></div>
     <div class="ti-d" data-sep="hijri-pray"></div>
-    <div class="ti-s" id="ti-s-np" data-sec="pray"><span class="ti-emoji" style="font-size:14px;line-height:1">🕌</span><span class="ti-np" id="ti-np"></span></div>`;
+    <div class="ti-s" id="ti-s-np" data-sec="pray"><span class="ti-emoji" style="font-size:14px;line-height:1">🕌</span><span class="ti-np" id="ti-np"></span></div>
+    <div class="ti-d" data-sep="pray-age"></div>
+    <div class="ti-s" id="ti-s-age" data-sec="age"><span class="ti-emoji" style="font-size:14px;line-height:1">⏳</span><span class="ti-age" id="ti-age"></span></div>`;
   document.body.appendChild(island);
 
   /** Rebuild island className + inline styles from cfg — single source of truth */
@@ -419,6 +460,8 @@
     if(cfg.islandBg==='transparent') cls+=' ti-bg-clear';
     if(prayGlow) cls+=' ti-pray-glow';
     island.className=cls;
+    // Glow animation duration
+    island.style.animationDuration=prayGlow?cfg.glowDur+'s':'';
 
     // Inline blur (#9) — applies to all bg modes
     const blurVal=`blur(${cfg.islandBlur}px) saturate(1.8)`;
@@ -442,8 +485,8 @@
 
   /** Show/hide island sections and their adjacent dividers */
   function syncIslandSections(){
-    const secMap={clk:cfg.secClk,date:cfg.secDate,hijri:cfg.secHijri,pray:cfg.secPray};
-    const order=['clk','date','hijri','pray'];
+    const secMap={clk:cfg.secClk,date:cfg.secDate,hijri:cfg.secHijri,pray:cfg.secPray,age:cfg.secAge};
+    const order=['clk','date','hijri','pray','age'];
     // Hide/show each section
     order.forEach(k=>{
       const el=island.querySelector(`[data-sec="${k}"]`);
@@ -533,12 +576,33 @@
     <!-- NOTEPAD -->
     <div class="ti-w"><div class="ti-wt">📝 Quick Notes</div><textarea class="ti-np-ta" id="ti-notes" placeholder="Type notes... (auto-saved)"></textarea></div>
 
+    <!-- LIFE CALENDAR -->
+    <div class="ti-w" id="ti-lc-w" style="padding:12px;${cfg.showLifeCal?'':'display:none'}">
+      <div class="ti-wt">⏳ Life Calendar</div>
+      <div class="ti-lc-row">
+        <span style="font-size:10px;color:var(--tid)">Born</span>
+        <input type="date" class="ti-lc-input" id="ti-lc-bday" value="${cfg.lifeBday}">
+        <span style="font-size:10px;color:var(--tid)">Expect</span>
+        <input type="number" class="ti-lc-input" id="ti-lc-exp" min="40" max="120" value="${cfg.lifeExpect}">
+        <span style="font-size:10px;color:var(--tid)">yr</span>
+      </div>
+      <div id="ti-lc-body"></div>
+    </div>
+
+    <!-- LIVE AGE -->
+    <div class="ti-w" id="ti-la-w" style="${cfg.showLiveAge?'':'display:none'}">
+      <div class="ti-wt">💀 Live Age</div>
+      <div class="ti-age-w"><div id="ti-la-body"><div class="ti-age-prompt">Set birthday in Life Calendar above</div></div></div>
+    </div>
+
     <!-- SETTINGS -->
     <div class="ti-w" id="ti-settings">
       <div class="ti-wt">⚙️ Settings</div>
 
       <div class="ti-set-row"><span class="ti-set-label">Show Island</span><button class="ti-set-tog ${cfg.showIsland?'on':'off'}" id="ti-tog-island"></button></div>
       <div class="ti-set-row"><span class="ti-set-label">Show Clock Widget</span><button class="ti-set-tog ${cfg.showClock?'on':'off'}" id="ti-tog-clock"></button></div>
+      <div class="ti-set-row"><span class="ti-set-label">Show Life Calendar</span><button class="ti-set-tog ${cfg.showLifeCal?'on':'off'}" id="ti-tog-lifecal"></button></div>
+      <div class="ti-set-row"><span class="ti-set-label">Show Live Age</span><button class="ti-set-tog ${cfg.showLiveAge?'on':'off'}" id="ti-tog-liveage"></button></div>
       <div class="ti-set-row"><span class="ti-set-label">Lock Island Position</span><button class="ti-set-tog ${cfg.lockIsland?'on':'off'}" id="ti-tog-lock"></button></div>
       <div class="ti-set-row"><span class="ti-set-label">Show Island Emojis</span><button class="ti-set-tog ${cfg.showEmojis?'on':'off'}" id="ti-tog-emoji"></button></div>
       <div class="ti-set-row"><span class="ti-set-label">Show Hover Popups</span><button class="ti-set-tog ${cfg.showPopups?'on':'off'}" id="ti-tog-popups"></button></div>
@@ -550,12 +614,14 @@
       <div class="ti-set-row"><span class="ti-set-label">📅 English Date</span><button class="ti-set-tog ${cfg.secDate?'on':'off'}" id="ti-tog-secDate"></button></div>
       <div class="ti-set-row"><span class="ti-set-label">🌙 Hijri Date</span><button class="ti-set-tog ${cfg.secHijri?'on':'off'}" id="ti-tog-secHijri"></button></div>
       <div class="ti-set-row"><span class="ti-set-label">🕌 Prayer Countdown</span><button class="ti-set-tog ${cfg.secPray?'on':'off'}" id="ti-tog-secPray"></button></div>
+      <div class="ti-set-row"><span class="ti-set-label">⏳ Live Age</span><button class="ti-set-tog ${cfg.secAge?'on':'off'}" id="ti-tog-secAge"></button></div>
 
       <div class="ti-set-divider"></div>
 
       <div class="ti-set-row"><span class="ti-set-label">Island Position</span><select class="ti-set-sel" id="ti-sel-pos"><option value="top-center">Top Center</option><option value="top-left">Top Left</option><option value="top-right">Top Right</option><option value="bottom-center">Bottom Center</option></select></div>
       <div class="ti-set-row"><span class="ti-set-label">Island Scale</span><select class="ti-set-sel" id="ti-sel-scale"><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option><option value="xl">XL</option></select></div>
       <div class="ti-set-row"><span class="ti-set-label">Font Preset</span><select class="ti-set-sel" id="ti-sel-font"><option value="default">Default</option><option value="digital">Digital</option><option value="papyrus">Papyrus</option></select></div>
+      <div class="ti-set-row"><span class="ti-set-label">Prayer Glow Speed</span><select class="ti-set-sel" id="ti-sel-glow"><option value="1">Fast (1s)</option><option value="3">Normal (3s)</option><option value="5">Slow (5s)</option></select></div>
 
       <div class="ti-set-row"><span class="ti-set-label">Blur</span><div class="ti-set-range-row"><input type="range" class="ti-set-range" id="ti-rng-blur" min="0" max="40" value="${cfg.islandBlur}"><span class="ti-set-range-val" id="ti-blur-val">${cfg.islandBlur}px</span></div></div>
 
@@ -591,14 +657,14 @@
       </div>
     </div>
 
-    <div class="ti-foot">🏝️ Time Island v4.3.1</div>`;
+    <div class="ti-foot">🏝️ Time Island v4.5.0</div>`;
   document.body.appendChild(sb);
 
   // ═══════════════════════════════════════════
   //  §5  CACHE DOM REFS
   // ═══════════════════════════════════════════
   const $=k=>document.getElementById(k);
-  const R={clk:$('ti-clk'),en:$('ti-en'),ar:$('ti-ar'),np:$('ti-np'),phj:$('ti-phj'),pgr:$('ti-pgr'),pg:$('ti-pg'),pcd:$('ti-pcd'),sc:$('ti-sc'),dig:$('ti-dig'),sw:$('ti-sw'),notes:$('ti-notes'),ww:$('ti-ww'),ci:$('ti-ci'),cd:$('ti-cd')};
+  const R={clk:$('ti-clk'),en:$('ti-en'),ar:$('ti-ar'),np:$('ti-np'),phj:$('ti-phj'),pgr:$('ti-pgr'),pg:$('ti-pg'),pcd:$('ti-pcd'),sc:$('ti-sc'),dig:$('ti-dig'),sw:$('ti-sw'),notes:$('ti-notes'),ww:$('ti-ww'),ci:$('ti-ci'),cd:$('ti-cd'),age:$('ti-age')};
 
   // ═══════════════════════════════════════════
   //  §6  ANALOG CLOCK SVG
@@ -832,6 +898,109 @@
   }
 
   // ═══════════════════════════════════════════
+  //  §11b  LIFE CALENDAR
+  // ═══════════════════════════════════════════
+  const lcBody=$('ti-lc-body'), lcBday=$('ti-lc-bday'), lcExp=$('ti-lc-exp');
+
+  function renderLifeCal(){
+    if(!cfg.lifeBday){
+      lcBody.innerHTML='<div class="ti-lc-prompt">Enter your birthday above to see<br>your life in weeks</div>';
+      return;
+    }
+    const bday=new Date(cfg.lifeBday+'T00:00:00');
+    if(isNaN(bday.getTime())){lcBody.innerHTML='<div class="ti-lc-prompt">Invalid date</div>';return}
+    const now=new Date(), exp=cfg.lifeExpect;
+    const totalWeeks=exp*52;
+    // Weeks lived = floor of ms difference
+    const msLived=now.getTime()-bday.getTime();
+    if(msLived<0){lcBody.innerHTML='<div class="ti-lc-prompt">Birthday is in the future</div>';return}
+    const weeksLived=Math.floor(msLived/(7*24*60*60*1000));
+    const weeksLeft=Math.max(0,totalWeeks-weeksLived);
+    const pct=Math.min(100,(weeksLived/totalWeeks*100)).toFixed(1);
+
+    // Stats + progress bar
+    const ageYrs=Math.floor(msLived/(365.25*24*60*60*1000));
+    const ageMo=Math.floor((msLived%(365.25*24*60*60*1000))/(30.44*24*60*60*1000));
+    let h='<div class="ti-lc-stats">';
+    h+=`<div class="ti-lc-stat"><div class="ti-lc-stat-val lived">${ageYrs}y ${ageMo}m</div><div class="ti-lc-stat-lbl">Age</div></div>`;
+    h+=`<div class="ti-lc-stat"><div class="ti-lc-stat-val lived">${weeksLived.toLocaleString()}</div><div class="ti-lc-stat-lbl">Weeks Lived</div></div>`;
+    h+=`<div class="ti-lc-stat"><div class="ti-lc-stat-val left">${weeksLeft.toLocaleString()}</div><div class="ti-lc-stat-lbl">Weeks Left</div></div>`;
+    h+=`<div class="ti-lc-stat"><div class="ti-lc-stat-val pct">${pct}%</div><div class="ti-lc-stat-lbl">Elapsed</div></div>`;
+    h+='</div>';
+    h+=`<div class="ti-lc-bar"><div class="ti-lc-bar-fill" style="width:${pct}%"></div></div>`;
+
+    // Grid: 52 columns (weeks) × exp rows (years)
+    h+='<div class="ti-lc-grid-wrap"><div class="ti-lc-grid">';
+    for(let yr=0;yr<exp;yr++){
+      const isDec=yr>0&&yr%10===0;
+      for(let wk=0;wk<52;wk++){
+        const w=yr*52+wk;
+        let cls = w < weeksLived ? 'lived' : (w === weeksLived ? 'cur' : '');
+        if(isDec) cls+=' decade';
+        h+=`<div class="ti-lc-wk ${cls}" title="Age ${yr}, Week ${wk+1}"></div>`;
+      }
+    }
+    h+='</div></div>';
+
+    // Legend
+    h+='<div class="ti-lc-legend">';
+    h+='<span><span class="ti-lc-leg-dot" style="background:var(--tia)"></span>Lived</span>';
+    h+='<span><span class="ti-lc-leg-dot" style="background:var(--tio)"></span>Now</span>';
+    h+='<span><span class="ti-lc-leg-dot" style="background:rgba(255,255,255,.06)"></span>Future</span>';
+    h+='</div>';
+
+    lcBody.innerHTML=h;
+  }
+
+  lcBday.addEventListener('change',()=>{
+    cfg.lifeBday=lcBday.value;gSet('ti_lifeBday',cfg.lifeBday);
+    renderLifeCal();updLiveAge();
+  });
+  lcExp.addEventListener('change',()=>{
+    const v=Math.max(40,Math.min(120,+lcExp.value||80));
+    lcExp.value=v;cfg.lifeExpect=v;gSet('ti_lifeExpect',v);
+    renderLifeCal();
+  });
+  renderLifeCal();
+
+  // ═══════════════════════════════════════════
+  //  §11c  LIVE AGE (mortality-style real-time counter)
+  // ═══════════════════════════════════════════
+  const laBody=$('ti-la-body');
+
+  /** Compute precise age breakdown from birthday to now */
+  function calcAge(bdayStr){
+    if(!bdayStr)return null;
+    const b=new Date(bdayStr+'T00:00:00');
+    if(isNaN(b.getTime()))return null;
+    const now=new Date();
+    if(now<b)return null;
+    let y=now.getFullYear()-b.getFullYear();
+    let mo=now.getMonth()-b.getMonth();
+    let d=now.getDate()-b.getDate();
+    if(d<0){mo--;const prev=new Date(now.getFullYear(),now.getMonth(),0);d+=prev.getDate()}
+    if(mo<0){y--;mo+=12}
+    const h=now.getHours(),m=now.getMinutes(),s=now.getSeconds();
+    // Total days alive for secondary stat
+    const totalDays=Math.floor((now-b)/(86400000));
+    return{y,mo,d,h,m,s,totalDays};
+  }
+
+  /** Update sidebar live age widget + island section — called every second from tick() */
+  function updLiveAge(){
+    const a=calcAge(cfg.lifeBday);
+    if(!a){
+      laBody.innerHTML='<div class="ti-age-prompt">Set birthday in Life Calendar above</div>';
+      R.age.textContent='';
+      return;
+    }
+    // Sidebar: large format
+    laBody.innerHTML=`<div class="ti-age-live">${a.y}<span>y</span> ${a.mo}<span>mo</span> ${a.d}<span>d</span><br>${P(a.h)}<span>h</span> ${P(a.m)}<span>m</span> ${P(a.s)}<span>s</span></div><div class="ti-age-sub">${a.totalDays.toLocaleString()} days alive</div>`;
+    // Island: compact
+    R.age.textContent=`${a.y}y ${a.mo}m ${a.d}d`;
+  }
+
+  // ═══════════════════════════════════════════
   //  §12  STOPWATCH & NOTEPAD
   // ═══════════════════════════════════════════
   const swG=$('ti-swg'),swS=$('ti-sws'),swR=$('ti-swr');
@@ -913,6 +1082,7 @@
 
   setupTog('ti-tog-island','showIsland',()=>syncIslandClasses());
   setupTog('ti-tog-clock','showClock',v=>{$('ti-clk-w').style.display=v?'':'none'});
+  setupTog('ti-tog-lifecal','showLifeCal',v=>{$('ti-lc-w').style.display=v?'':'none'});
   setupTog('ti-tog-lock','lockIsland',()=>syncIslandClasses());
   setupTog('ti-tog-emoji','showEmojis',()=>syncIslandClasses());
   setupTog('ti-tog-popups','showPopups',()=>{});
@@ -924,7 +1094,17 @@
   setupTog('ti-tog-secDate','secDate',()=>syncIslandClasses());
   setupTog('ti-tog-secHijri','secHijri',()=>syncIslandClasses());
   setupTog('ti-tog-secPray','secPray',()=>syncIslandClasses());
+  setupTog('ti-tog-secAge','secAge',()=>syncIslandClasses());
+  setupTog('ti-tog-liveage','showLiveAge',v=>{$('ti-la-w').style.display=v?'':'none'});
   if(!cfg.showClock)$('ti-clk-w').style.display='none';
+
+  // --- Glow duration ---
+  const selGlow=$('ti-sel-glow');
+  selGlow.value=cfg.glowDur;
+  selGlow.addEventListener('change',e=>{
+    cfg.glowDur=+e.target.value;gSet('ti_glowDur',cfg.glowDur);
+    if(prayGlow)syncIslandClasses();
+  });
 
   // --- Blur slider (#9) ---
   const rngBlur=$('ti-rng-blur'), blurVal=$('ti-blur-val');
@@ -980,6 +1160,7 @@
       R.dig.innerHTML=`${P(h)}:${P(m)}:<span class="ti-dig-s">${P(s)}</span>`;
       sH(HN.h,((h%12)+m/60)*30,42);sH(HN.m,(m+s/60)*6,56);sH(HN.s,s*6,62);
       updCountdown();
+      updLiveAge();
       if(s===0)renderPG();
     }
     requestAnimationFrame(tick);
