@@ -1,1 +1,2 @@
+a userscript working on all website, later make it a extension like? but for now keep it a userscript
 a userscript that add the , floating island date and time like in feed (https://achma-learning.github.io/feed/) to google.com, and add the sidebar with widgets to google and every website, toogle on/off sidebar with "alt+ctrl" toogle time floating islande with "alt+t" when mouse hover over english time , show monthly view of calendar and highlight todays date, and when mouse hover over arabic calendar show corresponding hijri date = التاريخ الهجري
