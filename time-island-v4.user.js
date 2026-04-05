@@ -107,6 +107,7 @@
     glowDur:     gGet('ti_glowDur', 3),                // 1 | 3 | 5 seconds
     showLiveAge: gGet('ti_showLiveAge', true),
     secAge:      gGet('ti_secAge', false),              // live age section on island
+    clickPopups: gGet('ti_clickPopups', false),          // click (instead of hover) to open popups
   };
 
   const DEFAULT_LINKS=[
@@ -610,6 +611,7 @@
       <div class="ti-set-row"><span class="ti-set-label">Lock Island Position</span><button class="ti-set-tog ${cfg.lockIsland?'on':'off'}" id="ti-tog-lock"></button></div>
       <div class="ti-set-row"><span class="ti-set-label">Show Island Emojis</span><button class="ti-set-tog ${cfg.showEmojis?'on':'off'}" id="ti-tog-emoji"></button></div>
       <div class="ti-set-row"><span class="ti-set-label">Show Hover Popups</span><button class="ti-set-tog ${cfg.showPopups?'on':'off'}" id="ti-tog-popups"></button></div>
+      <div class="ti-set-row"><span class="ti-set-label">Click to Open Popups</span><button class="ti-set-tog ${cfg.clickPopups?'on':'off'}" id="ti-tog-clickpopups"></button></div>
       <div class="ti-set-row"><span class="ti-set-label">Auto-Hide Island</span><button class="ti-set-tog ${cfg.autoHide?'on':'off'}" id="ti-tog-autohide"></button></div>
 
       <div class="ti-set-divider"></div>
@@ -864,30 +866,64 @@
 
   // Smart popup positioning: above island when in bottom half, below when in top half.
   // cfg.showPopups is a master kill-switch — when OFF no popup opens at all.
+  // cfg.clickPopups switches from hover to click-to-toggle mode.
+  const allPopups=[]; // track all popups for outside-click dismiss
+  function positionPopup(trig,popup,posRight){
+    const r=trig.getBoundingClientRect();
+    const pH=popup.offsetHeight;
+    const midY=window.innerHeight/2;
+    if(r.top+r.height/2>midY){
+      popup.style.top=Math.max(4,r.top-pH-10)+'px';
+    }else{
+      popup.style.top=(r.bottom+10)+'px';
+    }
+    popup.style.bottom='auto';
+    if(posRight){popup.style.right='8px';popup.style.left='auto'}
+    else{popup.style.left=Math.max(8,r.left-60)+'px';popup.style.right='auto'}
+  }
+
+  function closeAllPopups(){allPopups.forEach(p=>p.classList.remove('show'))}
+
   function hoverSetup(trigId,popup,renderFn,posRight){
     let timer;
     const trig=document.getElementById(trigId);
+    allPopups.push(popup);
+
+    // ── Hover mode ──
     trig.addEventListener('mouseenter',()=>{
-      if(!cfg.showPopups)return;
+      if(!cfg.showPopups||cfg.clickPopups)return;
       clearTimeout(timer);
       renderFn();
-      const r=trig.getBoundingClientRect();
-      const pH=popup.offsetHeight;
-      const midY=window.innerHeight/2;
-      if(r.top+r.height/2>midY){
-        popup.style.top=Math.max(4,r.top-pH-10)+'px';
-      }else{
-        popup.style.top=(r.bottom+10)+'px';
-      }
-      popup.style.bottom='auto';
-      if(posRight){popup.style.right='8px';popup.style.left='auto'}
-      else{popup.style.left=Math.max(8,r.left-60)+'px';popup.style.right='auto'}
+      positionPopup(trig,popup,posRight);
       popup.classList.add('show');
     });
-    trig.addEventListener('mouseleave',()=>{timer=setTimeout(()=>popup.classList.remove('show'),300)});
-    popup.addEventListener('mouseenter',()=>clearTimeout(timer));
-    popup.addEventListener('mouseleave',()=>{timer=setTimeout(()=>popup.classList.remove('show'),200)});
+    trig.addEventListener('mouseleave',()=>{
+      if(cfg.clickPopups)return;
+      timer=setTimeout(()=>popup.classList.remove('show'),300);
+    });
+    popup.addEventListener('mouseenter',()=>{if(!cfg.clickPopups)clearTimeout(timer)});
+    popup.addEventListener('mouseleave',()=>{
+      if(cfg.clickPopups)return;
+      timer=setTimeout(()=>popup.classList.remove('show'),200);
+    });
+
+    // ── Click mode ──
+    trig.addEventListener('click',e=>{
+      if(!cfg.showPopups||!cfg.clickPopups)return;
+      e.stopPropagation();
+      const wasOpen=popup.classList.contains('show');
+      closeAllPopups();
+      if(!wasOpen){
+        renderFn();
+        positionPopup(trig,popup,posRight);
+        popup.classList.add('show');
+      }
+    });
+    popup.addEventListener('click',e=>e.stopPropagation());
   }
+  // Close popups on outside click (click mode)
+  document.addEventListener('click',()=>{if(cfg.clickPopups)closeAllPopups()});
+
   hoverSetup('ti-s-en',calPop,()=>{initCal();renderCalPop()},false);
   hoverSetup('ti-s-ar',hijPop,renderHijPop,true);
   hoverSetup('ti-s-clk',gcPop,renderGcPop,false);
@@ -1096,7 +1132,8 @@
   setupTog('ti-tog-lifecal','showLifeCal',v=>{$('ti-lc-w').style.display=v?'':'none'});
   setupTog('ti-tog-lock','lockIsland',()=>syncIslandClasses());
   setupTog('ti-tog-emoji','showEmojis',()=>syncIslandClasses());
-  setupTog('ti-tog-popups','showPopups',()=>{});
+  setupTog('ti-tog-popups','showPopups',v=>{if(!v)closeAllPopups()});
+  setupTog('ti-tog-clickpopups','clickPopups',()=>{closeAllPopups()});
   setupTog('ti-tog-autohide','autoHide',v=>{
     if(v){syncHotzone()}else{hotzone.classList.remove('active');island.classList.remove('ti-auto-out')}
   });
