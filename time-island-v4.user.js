@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         🏝️ Time Island & Sidebar Widgets v4
 // @namespace    https://achma-learning.github.io/
-// @version      4.5.0
+// @version      4.6.0
 // @description  Floating island with clock, dates (EN/Hijri), prayer countdown, live age + sidebar: prayer times (35 Moroccan cities), weather, calendar, life-in-weeks grid, live age counter, stopwatch, notes, editable links. Auto-hide, section toggles, scale/font/blur/color presets, prayer glow. Alt+Ctrl=sidebar, Alt+T=island.
 // @author       Achma
 // @match        *://*/*
@@ -320,6 +320,9 @@
 .ti-phj{text-align:center;direction:rtl;font-family:var(--tiar);font-size:14px;font-weight:700;color:var(--tia2);margin-bottom:4px}
 .ti-pgr{text-align:center;font-size:11px;color:var(--tid);margin-bottom:8px}
 .ti-pcd{text-align:center;font-family:var(--tim);font-size:13px;color:var(--tio);margin-top:8px;font-weight:600;direction:ltr;unicode-bidi:isolate}
+.ti-habous{text-align:center;margin-top:8px}
+.ti-habous-btn{display:inline-flex;align-items:center;gap:5px;padding:6px 14px;background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);border-radius:20px;color:var(--tig2);text-decoration:none;font-size:11px;font-weight:600;transition:background .2s,transform .15s;cursor:pointer;font-family:var(--tif)}
+.ti-habous-btn:hover{background:rgba(52,211,153,.2);transform:translateY(-1px)}
 .ti-pld{padding:24px;text-align:center;color:var(--tid);font-size:13px}
 
 /* City search */
@@ -556,6 +559,7 @@
       <div class="ti-pgr" id="ti-pgr"></div>
       <div id="ti-pg"><div class="ti-pld">جاري التحميل...</div></div>
       <div class="ti-pcd" id="ti-pcd"></div>
+      <div class="ti-habous" id="ti-habous"><a class="ti-habous-btn" id="ti-habous-btn" href="#" target="_blank">📅 الشهري / Monthly</a></div>
     </div>
 
     <!-- WEATHER -->
@@ -657,14 +661,21 @@
       </div>
     </div>
 
-    <div class="ti-foot">🏝️ Time Island v4.5.0</div>`;
+    <div class="ti-foot">🏝️ Time Island v4.6.0</div>`;
   document.body.appendChild(sb);
 
   // ═══════════════════════════════════════════
   //  §5  CACHE DOM REFS
   // ═══════════════════════════════════════════
   const $=k=>document.getElementById(k);
-  const R={clk:$('ti-clk'),en:$('ti-en'),ar:$('ti-ar'),np:$('ti-np'),phj:$('ti-phj'),pgr:$('ti-pgr'),pg:$('ti-pg'),pcd:$('ti-pcd'),sc:$('ti-sc'),dig:$('ti-dig'),sw:$('ti-sw'),notes:$('ti-notes'),ww:$('ti-ww'),ci:$('ti-ci'),cd:$('ti-cd'),age:$('ti-age')};
+  const R={clk:$('ti-clk'),en:$('ti-en'),ar:$('ti-ar'),np:$('ti-np'),phj:$('ti-phj'),pgr:$('ti-pgr'),pg:$('ti-pg'),pcd:$('ti-pcd'),sc:$('ti-sc'),dig:$('ti-dig'),sw:$('ti-sw'),notes:$('ti-notes'),ww:$('ti-ww'),ci:$('ti-ci'),cd:$('ti-cd'),age:$('ti-age'),habous:$('ti-habous-btn')};
+
+  /** Update Habous monthly link to match the selected city (#14) */
+  function syncHabousLink(){
+    const c=getCity();
+    R.habous.href=`https://www.habous.gov.ma/prieres/horaire_hijri_2.php?ville=${c[0]}`;
+  }
+  syncHabousLink();
 
   // ═══════════════════════════════════════════
   //  §6  ANALOG CLOCK SVG
@@ -694,7 +705,7 @@
   function pickCity(idx){
     selCity=idx;gSet('ti_city_idx',idx);
     R.ci.value=cityDisplay();R.cd.classList.remove('open');hlIdx=-1;
-    fetchPrayer();fetchWeather();
+    fetchPrayer();fetchWeather();syncHabousLink();
   }
 
   R.ci.addEventListener('focus',()=>{R.ci.select();renderDD(R.ci.value===cityDisplay()?'':R.ci.value)});
