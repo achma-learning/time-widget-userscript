@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         🏝️ Time Island & Sidebar Widgets v4
 // @namespace    https://achma-learning.github.io/
-// @version      4.7.0
+// @version      4.7.1
 // @description  Floating island with clock, dates (EN/Hijri), prayer countdown, live age + sidebar: prayer times (35 Moroccan cities), weather, calendar, life-in-weeks grid, live age counter, stopwatch, notes, editable links. Auto-hide, section toggles, scale/font/blur/color presets, prayer glow. Alt+Ctrl=sidebar, Alt+T=island.
 // @author       Achma
 // @match        *://*/*
@@ -55,6 +55,8 @@
   const EN_DS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   const AR_D=['الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
   const WICON={'Sunny':'☀️','Clear':'☀️','Partly cloudy':'⛅','Partly Cloudy':'⛅','Cloudy':'☁️','Overcast':'☁️','Mist':'🌫️','Fog':'🌫️','Light rain':'🌧️','Rain':'🌧️','Heavy rain':'🌧️','Thunderstorm':'⛈️','Snow':'❄️','Patchy rain possible':'🌦️','Light drizzle':'🌦️'};
+  // Wind arrow points the direction the wind is moving TO (opposite of "from")
+  const WDIR={N:'↓',NNE:'↓',NE:'↙',ENE:'↙',E:'←',ESE:'←',SE:'↖',SSE:'↖',S:'↑',SSW:'↑',SW:'↗',WSW:'↗',W:'→',WNW:'→',NW:'↘',NNW:'↘'};
 
   // ═══════════════════════════════════════════
   //  §1  HELPERS
@@ -308,9 +310,31 @@
 .ti-pp-item.on .pp-name,.ti-pp-item.on .pp-time{color:#fff}
 .ti-pp-cd{text-align:center;margin-top:10px;padding-top:8px;border-top:1px solid var(--tib);font-family:var(--tim);font-size:13px;color:var(--tio);font-weight:600;direction:ltr;unicode-bidi:isolate}
 
-/* Weather popup (hover/click on island weather section) */
-.ti-wp{padding:0;min-width:250px;overflow:hidden;border-color:rgba(59,130,246,.3);background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:0 8px 32px rgba(0,0,0,.4),0 0 20px rgba(59,130,246,.12)}
-.ti-wp .ti-ww{margin:0;border-radius:16px}
+/* Weather popup (hover/click on island weather section) — 3-day forecast */
+.ti-wp{padding:14px;min-width:340px;max-width:400px;border-color:rgba(59,130,246,.3);box-shadow:0 8px 32px rgba(0,0,0,.4),0 0 20px rgba(59,130,246,.12)}
+.ti-wp-hdr{display:flex;justify-content:space-between;align-items:center;padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid var(--tib);gap:10px}
+.ti-wp-loc{flex:1;min-width:0}
+.ti-wp-city{font-size:14px;font-weight:700;color:var(--tit);display:flex;align-items:center;gap:4px}
+.ti-wp-now-desc{font-size:11px;color:var(--tid);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ti-wp-now{display:flex;align-items:center;gap:8px}
+.ti-wp-now-ico{font-size:26px;line-height:1}
+.ti-wp-now-temp{font-size:22px;font-weight:700;color:var(--tit);font-family:var(--tim);font-variant-numeric:tabular-nums}
+.ti-wp-day{margin-bottom:10px}
+.ti-wp-day:last-child{margin-bottom:0}
+.ti-wp-day-hdr{display:flex;justify-content:space-between;align-items:baseline;padding-bottom:6px;margin-bottom:6px;border-bottom:1px dashed rgba(255,255,255,.06)}
+.ti-wp-day-name{font-size:12px;font-weight:700;color:var(--tia);text-transform:uppercase;letter-spacing:.5px}
+.ti-wp-day-date{font-size:10px;color:var(--tid);margin-left:6px}
+.ti-wp-day-temps{font-size:11px;font-family:var(--tim);font-variant-numeric:tabular-nums}
+.ti-wp-day-temps .hi{color:var(--tio);font-weight:700}
+.ti-wp-day-temps .lo{color:#60a5fa;font-weight:600;margin-left:4px}
+.ti-wp-slots{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
+.ti-wp-slot{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.05);border-radius:8px;padding:7px 4px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:2px}
+.ti-wp-slot-lbl{font-size:9px;color:var(--tid);text-transform:uppercase;letter-spacing:.4px;font-weight:600}
+.ti-wp-slot-ico{font-size:20px;line-height:1;margin:1px 0}
+.ti-wp-slot-temp{font-size:13px;font-weight:700;color:var(--tit);font-family:var(--tim);font-variant-numeric:tabular-nums;line-height:1.1}
+.ti-wp-slot-desc{font-size:9px;color:var(--tid);line-height:1.15;height:22px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;width:100%;padding:0 1px}
+.ti-wp-slot-wind{font-size:9px;color:var(--tid);font-family:var(--tim);font-variant-numeric:tabular-nums;display:flex;align-items:center;justify-content:center;gap:2px;margin-top:1px}
+.ti-wp-slot-wind .wd{color:var(--tia2);font-size:11px;line-height:1}
 
 /* Sidebar */
 #ti-sb{position:fixed;top:0;right:0;width:320px;height:100vh;z-index:2147483645;background:var(--ti);backdrop-filter:blur(24px) saturate(1.8);border-left:1px solid var(--tib);box-shadow:-4px 0 32px rgba(0,0,0,.3);font-family:var(--tif);color:var(--tit);transform:translateX(100%);transition:transform .4s cubic-bezier(.16,1,.3,1);overflow-y:auto;overflow-x:hidden}
@@ -688,7 +712,7 @@
       </div>
     </div>
 
-    <div class="ti-foot">🏝️ Time Island v4.7.0</div>`;
+    <div class="ti-foot">🏝️ Time Island v4.7.1</div>`;
   document.body.appendChild(sb);
 
   // ═══════════════════════════════════════════
@@ -853,8 +877,59 @@
     R.wth.textContent=`${weatherData.temp}°C`;
   }
 
+  // 4 time slots from wttr.in J1 hourly[] (8 entries every 3h: idx 0=00,2=06,4=12,6=18,7=21)
+  const WTH_SLOTS=[{lbl:'Morning',idx:2},{lbl:'Afternoon',idx:4},{lbl:'Evening',idx:6},{lbl:'Night',idx:7}];
+
   function renderWthPop(){
-    wthPop.innerHTML=`<div class="ti-ww" style="margin:0">${renderWeatherCard()}</div>`;
+    if(!weatherData){
+      wthPop.innerHTML='<div style="padding:8px;text-align:center;color:var(--tid);font-size:12px">Loading weather...</div>';
+      return;
+    }
+    const w=weatherData;
+    let h=`<div class="ti-wp-hdr">
+      <div class="ti-wp-loc">
+        <div class="ti-wp-city">📍 ${escHtml(w.cityEn)}</div>
+        <div class="ti-wp-now-desc">${escHtml(w.desc)} · Feels ${escHtml(w.feels)}° · 💧${escHtml(w.humidity)}%</div>
+      </div>
+      <div class="ti-wp-now">
+        <div class="ti-wp-now-ico">${w.icon}</div>
+        <div class="ti-wp-now-temp">${escHtml(w.temp)}°</div>
+        <button class="ti-ww-ext" title="Open weather in new tab" aria-label="Open weather in new tab">↗</button>
+      </div>
+    </div>`;
+
+    const days=(w.forecast||[]).slice(0,3);
+    if(!days.length){
+      h+='<div style="padding:8px;text-align:center;color:var(--tid);font-size:12px">Forecast unavailable</div>';
+    }else{
+      days.forEach((day,di)=>{
+        const dateObj=new Date(day.date+'T00:00:00');
+        const dayName=di===0?'Today':di===1?'Tomorrow':EN_D[dateObj.getDay()];
+        const dateStr=`${EN_DS[dateObj.getDay()]} · ${EN_M[dateObj.getMonth()]} ${dateObj.getDate()}`;
+        h+=`<div class="ti-wp-day">
+          <div class="ti-wp-day-hdr">
+            <div><span class="ti-wp-day-name">${dayName}</span><span class="ti-wp-day-date">${dateStr}</span></div>
+            <div class="ti-wp-day-temps"><span class="hi">▲ ${escHtml(day.maxtempC)}°</span><span class="lo">▼ ${escHtml(day.mintempC)}°</span></div>
+          </div>
+          <div class="ti-wp-slots">`;
+        WTH_SLOTS.forEach(s=>{
+          const hr=day.hourly&&day.hourly[s.idx];
+          if(!hr){h+='<div class="ti-wp-slot"></div>';return}
+          const desc=hr.weatherDesc?.[0]?.value||'N/A';
+          const ico=WICON[desc]||'🌤️';
+          const arr=WDIR[hr.winddir16Point]||'·';
+          h+=`<div class="ti-wp-slot">
+            <div class="ti-wp-slot-lbl">${s.lbl}</div>
+            <div class="ti-wp-slot-ico">${ico}</div>
+            <div class="ti-wp-slot-temp">${escHtml(hr.tempC)}°</div>
+            <div class="ti-wp-slot-desc" title="${escHtml(desc)}">${escHtml(desc)}</div>
+            <div class="ti-wp-slot-wind"><span class="wd">${arr}</span> ${escHtml(hr.windspeedKmph)} km/h</div>
+          </div>`;
+        });
+        h+='</div></div>';
+      });
+    }
+    wthPop.innerHTML=h;
     wireWeatherExt(wthPop);
   }
 
@@ -866,7 +941,7 @@
         const d=JSON.parse(r.responseText);const cur=d.current_condition[0];
         const desc=cur.weatherDesc?.[0]?.value||'N/A';
         const ico=WICON[desc]||'🌤️';
-        weatherData={temp:cur.temp_C,desc,icon:ico,humidity:cur.humidity,wind:cur.windspeedKmph,feels:cur.FeelsLikeC,cityAr:c[1],cityFr:c[2],cityEn:c[3]};
+        weatherData={temp:cur.temp_C,desc,icon:ico,humidity:cur.humidity,wind:cur.windspeedKmph,feels:cur.FeelsLikeC,cityAr:c[1],cityFr:c[2],cityEn:c[3],forecast:Array.isArray(d.weather)?d.weather:[]};
         R.ww.innerHTML=renderWeatherCard();
         wireWeatherExt(R.ww);
         updIslandWeather();
