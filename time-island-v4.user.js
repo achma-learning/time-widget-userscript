@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         🏝️ Time Island & Sidebar Widgets v4
 // @namespace    https://achma-learning.github.io/
-// @version      4.6.1
+// @version      4.7.0
 // @description  Floating island with clock, dates (EN/Hijri), prayer countdown, live age + sidebar: prayer times (35 Moroccan cities), weather, calendar, life-in-weeks grid, live age counter, stopwatch, notes, editable links. Auto-hide, section toggles, scale/font/blur/color presets, prayer glow. Alt+Ctrl=sidebar, Alt+T=island.
 // @author       Achma
 // @match        *://*/*
@@ -95,6 +95,7 @@
   let swOn=false,swT0=0,swE=0,swI=null;
   let prayGlow=false;                     // transient — true when within GLOW_MIN of adhan
   const GLOW_MIN=15;                      // glow lasts 15 minutes after each prayer time
+  let weatherData = null;                 // cached current weather for island + popup
   const cfg = {
     islandPos:   gGet('ti_pos','top-center'),
     showIsland:  gGet('ti_showIsland', true),
@@ -117,6 +118,7 @@
     glowDur:     gGet('ti_glowDur', 3),                // 1 | 3 | 5 seconds
     showLiveAge: gGet('ti_showLiveAge', true),
     secAge:      gGet('ti_secAge', false),              // live age section on island
+    secWeather:  gGet('ti_secWeather', true),           // weather indicator section on island
     clickPopups: gGet('ti_clickPopups', false),          // click (instead of hover) to open popups
   };
 
@@ -259,6 +261,7 @@
 .ti-np{font-size:11px;color:var(--tio);font-weight:600;font-family:var(--tim);direction:ltr;unicode-bidi:isolate}
 .ti-np-ar{direction:rtl;unicode-bidi:isolate;display:inline}
 .ti-np-ltr{direction:ltr;unicode-bidi:isolate;display:inline}
+.ti-wth{font-size:11.5px;color:#60a5fa;font-weight:600;font-family:var(--tim);white-space:nowrap;font-variant-numeric:tabular-nums}
 
 /* Popups */
 .ti-pop{position:fixed;z-index:2147483647;background:var(--ti);backdrop-filter:blur(24px) saturate(1.8);border:1px solid var(--tib);border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,.4);font-family:var(--tif);color:var(--tit);opacity:0;transform:translateY(-8px);transition:opacity .25s,transform .25s;pointer-events:none}
@@ -304,6 +307,10 @@
 .ti-pp-item .pp-time{font-size:14px;font-weight:700;color:var(--tit);font-family:var(--tim);font-variant-numeric:tabular-nums}
 .ti-pp-item.on .pp-name,.ti-pp-item.on .pp-time{color:#fff}
 .ti-pp-cd{text-align:center;margin-top:10px;padding-top:8px;border-top:1px solid var(--tib);font-family:var(--tim);font-size:13px;color:var(--tio);font-weight:600;direction:ltr;unicode-bidi:isolate}
+
+/* Weather popup (hover/click on island weather section) */
+.ti-wp{padding:0;min-width:250px;overflow:hidden;border-color:rgba(59,130,246,.3);background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:0 8px 32px rgba(0,0,0,.4),0 0 20px rgba(59,130,246,.12)}
+.ti-wp .ti-ww{margin:0;border-radius:16px}
 
 /* Sidebar */
 #ti-sb{position:fixed;top:0;right:0;width:320px;height:100vh;z-index:2147483645;background:var(--ti);backdrop-filter:blur(24px) saturate(1.8);border-left:1px solid var(--tib);box-shadow:-4px 0 32px rgba(0,0,0,.3);font-family:var(--tif);color:var(--tit);transform:translateX(100%);transition:transform .4s cubic-bezier(.16,1,.3,1);overflow-y:auto;overflow-x:hidden}
@@ -358,6 +365,10 @@
 .ti-wwgl{font-size:10px;opacity:.7;text-align:center}
 .ti-wwgv{font-size:13px;font-weight:600;text-align:center}
 .ti-wwld{padding:20px;text-align:center;color:rgba(255,255,255,.7);font-size:12px}
+.ti-ww-hr{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.ti-ww-ext{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.3);color:#fff;width:26px;height:26px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:13px;line-height:1;padding:0;transition:background .2s,transform .15s}
+.ti-ww-ext:hover{background:rgba(255,255,255,.3);transform:translateY(-1px)}
+.ti-ww-ext:active{transform:scale(.95)}
 
 /* Sidebar calendar */
 .ti-scg{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;text-align:center}
@@ -460,7 +471,9 @@
     <div class="ti-d" data-sep="hijri-pray"></div>
     <div class="ti-s" id="ti-s-np" data-sec="pray"><span class="ti-emoji" style="font-size:14px;line-height:1">🕌</span><span class="ti-np" id="ti-np"></span></div>
     <div class="ti-d" data-sep="pray-age"></div>
-    <div class="ti-s" id="ti-s-age" data-sec="age"><span class="ti-emoji" style="font-size:14px;line-height:1">⏳</span><span class="ti-age" id="ti-age"></span></div>`;
+    <div class="ti-s" id="ti-s-age" data-sec="age"><span class="ti-emoji" style="font-size:14px;line-height:1">⏳</span><span class="ti-age" id="ti-age"></span></div>
+    <div class="ti-d" data-sep="age-wth"></div>
+    <div class="ti-s" id="ti-s-wth" data-sec="wth"><span class="ti-emoji" style="font-size:14px;line-height:1">🌤️</span><span class="ti-wth" id="ti-wth">--</span></div>`;
   document.body.appendChild(island);
 
   /** Rebuild island className + inline styles from cfg — single source of truth */
@@ -499,8 +512,8 @@
 
   /** Show/hide island sections and their adjacent dividers */
   function syncIslandSections(){
-    const secMap={clk:cfg.secClk,date:cfg.secDate,hijri:cfg.secHijri,pray:cfg.secPray,age:cfg.secAge};
-    const order=['clk','date','hijri','pray','age'];
+    const secMap={clk:cfg.secClk,date:cfg.secDate,hijri:cfg.secHijri,pray:cfg.secPray,age:cfg.secAge,wth:cfg.secWeather};
+    const order=['clk','date','hijri','pray','age','wth'];
     // Hide/show each section
     order.forEach(k=>{
       const el=island.querySelector(`[data-sec="${k}"]`);
@@ -555,6 +568,7 @@
   const hijPop=document.createElement('div');hijPop.className='ti-pop ti-hp';document.body.appendChild(hijPop);
   const gcPop=document.createElement('div');gcPop.className='ti-pop ti-gcp';document.body.appendChild(gcPop);
   const prayPop=document.createElement('div');prayPop.className='ti-pop ti-pp';document.body.appendChild(prayPop);
+  const wthPop=document.createElement('div');wthPop.className='ti-pop ti-wp';document.body.appendChild(wthPop);
 
   // --- Sidebar ---
   const sb=document.createElement('div');
@@ -631,6 +645,7 @@
       <div class="ti-set-row"><span class="ti-set-label">🌙 Hijri Date</span><button class="ti-set-tog ${cfg.secHijri?'on':'off'}" id="ti-tog-secHijri"></button></div>
       <div class="ti-set-row"><span class="ti-set-label">🕌 Prayer Countdown</span><button class="ti-set-tog ${cfg.secPray?'on':'off'}" id="ti-tog-secPray"></button></div>
       <div class="ti-set-row"><span class="ti-set-label">⏳ Live Age</span><button class="ti-set-tog ${cfg.secAge?'on':'off'}" id="ti-tog-secAge"></button></div>
+      <div class="ti-set-row"><span class="ti-set-label">🌤️ Weather</span><button class="ti-set-tog ${cfg.secWeather?'on':'off'}" id="ti-tog-secWeather"></button></div>
 
       <div class="ti-set-divider"></div>
 
@@ -673,14 +688,14 @@
       </div>
     </div>
 
-    <div class="ti-foot">🏝️ Time Island v4.6.0</div>`;
+    <div class="ti-foot">🏝️ Time Island v4.7.0</div>`;
   document.body.appendChild(sb);
 
   // ═══════════════════════════════════════════
   //  §5  CACHE DOM REFS
   // ═══════════════════════════════════════════
   const $=k=>document.getElementById(k);
-  const R={clk:$('ti-clk'),en:$('ti-en'),ar:$('ti-ar'),np:$('ti-np'),phj:$('ti-phj'),pgr:$('ti-pgr'),pg:$('ti-pg'),pcd:$('ti-pcd'),sc:$('ti-sc'),dig:$('ti-dig'),sw:$('ti-sw'),notes:$('ti-notes'),ww:$('ti-ww'),ci:$('ti-ci'),cd:$('ti-cd'),age:$('ti-age'),habous:$('ti-habous-btn')};
+  const R={clk:$('ti-clk'),en:$('ti-en'),ar:$('ti-ar'),np:$('ti-np'),phj:$('ti-phj'),pgr:$('ti-pgr'),pg:$('ti-pg'),pcd:$('ti-pcd'),sc:$('ti-sc'),dig:$('ti-dig'),sw:$('ti-sw'),notes:$('ti-notes'),ww:$('ti-ww'),ci:$('ti-ci'),cd:$('ti-cd'),age:$('ti-age'),habous:$('ti-habous-btn'),wth:$('ti-wth')};
 
   /** Update Habous monthly link to match the selected city (#14) */
   function syncHabousLink(){
@@ -808,6 +823,41 @@
   // ═══════════════════════════════════════════
   //  §9  WEATHER (wttr.in, synced with city)
   // ═══════════════════════════════════════════
+  function weatherUrl(){return `https://wttr.in/${encodeURIComponent(getCity()[3])}`}
+
+  function renderWeatherCard(){
+    if(!weatherData)return '<div class="ti-wwld">Weather unavailable</div>';
+    const w=weatherData;
+    return `
+      <div class="ti-wwh">
+        <div><div class="ti-wwc">${escHtml(w.cityEn)}</div><div class="ti-wwt">${escHtml(w.temp)}°C</div><div class="ti-wwd">${escHtml(w.desc)}</div></div>
+        <div class="ti-ww-hr">
+          <button class="ti-ww-ext" title="Open weather in new tab" aria-label="Open weather in new tab">↗</button>
+          <div class="ti-wwi">${w.icon}</div>
+        </div>
+      </div>
+      <div class="ti-wwg"><div><div class="ti-wwgl">Humidity</div><div class="ti-wwgv">${escHtml(w.humidity)}%</div></div><div><div class="ti-wwgl">Wind</div><div class="ti-wwgv">${escHtml(w.wind)} km/h</div></div><div><div class="ti-wwgl">Feels</div><div class="ti-wwgv">${escHtml(w.feels)}°C</div></div></div>`;
+  }
+
+  function wireWeatherExt(container){
+    const btn=container.querySelector('.ti-ww-ext');
+    if(!btn)return;
+    btn.addEventListener('click',e=>{
+      e.stopPropagation();
+      window.open(weatherUrl(),'_blank','noopener,noreferrer');
+    });
+  }
+
+  function updIslandWeather(){
+    if(!weatherData){R.wth.textContent='--';return}
+    R.wth.textContent=`${weatherData.temp}°C`;
+  }
+
+  function renderWthPop(){
+    wthPop.innerHTML=`<div class="ti-ww" style="margin:0">${renderWeatherCard()}</div>`;
+    wireWeatherExt(wthPop);
+  }
+
   function fetchWeather(){
     const c=getCity();const city=c[3].replace(/\s+/g,'+');
     R.ww.innerHTML='<div class="ti-wwld">Loading weather...</div>';
@@ -816,11 +866,21 @@
         const d=JSON.parse(r.responseText);const cur=d.current_condition[0];
         const desc=cur.weatherDesc?.[0]?.value||'N/A';
         const ico=WICON[desc]||'🌤️';
-        R.ww.innerHTML=`
-          <div class="ti-wwh"><div><div class="ti-wwc">${c[3]}</div><div class="ti-wwt">${cur.temp_C}°C</div><div class="ti-wwd">${desc}</div></div><div class="ti-wwi">${ico}</div></div>
-          <div class="ti-wwg"><div><div class="ti-wwgl">Humidity</div><div class="ti-wwgv">${cur.humidity}%</div></div><div><div class="ti-wwgl">Wind</div><div class="ti-wwgv">${cur.windspeedKmph} km/h</div></div><div><div class="ti-wwgl">Feels</div><div class="ti-wwgv">${cur.FeelsLikeC}°C</div></div></div>`;
-      }catch{R.ww.innerHTML='<div class="ti-wwld">Weather unavailable</div>'}
-    },onerror(){R.ww.innerHTML='<div class="ti-wwld">Weather unavailable</div>'}});
+        weatherData={temp:cur.temp_C,desc,icon:ico,humidity:cur.humidity,wind:cur.windspeedKmph,feels:cur.FeelsLikeC,cityAr:c[1],cityFr:c[2],cityEn:c[3]};
+        R.ww.innerHTML=renderWeatherCard();
+        wireWeatherExt(R.ww);
+        updIslandWeather();
+        if(wthPop.classList.contains('show'))renderWthPop();
+      }catch{
+        weatherData=null;
+        R.ww.innerHTML='<div class="ti-wwld">Weather unavailable</div>';
+        updIslandWeather();
+      }
+    },onerror(){
+      weatherData=null;
+      R.ww.innerHTML='<div class="ti-wwld">Weather unavailable</div>';
+      updIslandWeather();
+    }});
   }
 
   // ═══════════════════════════════════════════
@@ -939,6 +999,7 @@
   hoverSetup('ti-s-ar',hijPop,renderHijPop,true);
   hoverSetup('ti-s-clk',gcPop,renderGcPop,false);
   hoverSetup('ti-s-np',prayPop,renderPrayPop,true);
+  hoverSetup('ti-s-wth',wthPop,renderWthPop,true);
 
   // ═══════════════════════════════════════════
   //  §11  SIDEBAR CALENDAR
@@ -1154,6 +1215,7 @@
   setupTog('ti-tog-secHijri','secHijri',()=>syncIslandClasses());
   setupTog('ti-tog-secPray','secPray',()=>syncIslandClasses());
   setupTog('ti-tog-secAge','secAge',()=>syncIslandClasses());
+  setupTog('ti-tog-secWeather','secWeather',()=>syncIslandClasses());
   setupTog('ti-tog-liveage','showLiveAge',v=>{$('ti-la-w').style.display=v?'':'none'});
   if(!cfg.showClock)$('ti-clk-w').style.display='none';
 
