@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         🏝️ Time Island & Sidebar Widgets v4
 // @namespace    https://achma-learning.github.io/
-// @version      4.6.0
+// @version      4.6.1
 // @description  Floating island with clock, dates (EN/Hijri), prayer countdown, live age + sidebar: prayer times (35 Moroccan cities), weather, calendar, life-in-weeks grid, live age counter, stopwatch, notes, editable links. Auto-hide, section toggles, scale/font/blur/color presets, prayer glow. Alt+Ctrl=sidebar, Alt+T=island.
 // @author       Achma
 // @match        *://*/*
@@ -76,12 +76,22 @@
     const hM=Math.floor((24*l)/709);return{year:30*n+j-30,month:hM,day:l-Math.floor((709*hM)/24)};
   }
 
+  // Prefers Aladhan API Hijri (exact); falls back to arithmetic toHijri() before first fetch or when stale.
+  function getHijri(now){
+    const ds=`${P(now.getDate())}-${P(now.getMonth()+1)}-${now.getFullYear()}`;
+    if(apiHijri&&apiHijri.gDate===ds)
+      return{day:apiHijri.day,monthName:apiHijri.monthAr||apiHijri.monthEn||'',year:apiHijri.year};
+    const h=toHijri(now.getFullYear(),now.getMonth(),now.getDate());
+    return{day:h.day,monthName:HIJRI_M[h.month-1]||'',year:h.year};
+  }
+
   // ═══════════════════════════════════════════
   //  §2  STATE
   // ═══════════════════════════════════════════
   let selCity = gGet('ti_city_idx', 22);
   let prayerData = null;
   let prayerHijri = '';
+  let apiHijri = null;  // { day, monthAr, monthEn, year, weekdayAr, gDate } from Aladhan; null until first fetch
   let swOn=false,swT0=0,swE=0,swI=null;
   let prayGlow=false;                     // transient — true when within GLOW_MIN of adhan
   const GLOW_MIN=15;                      // glow lasts 15 minutes after each prayer time
@@ -735,7 +745,8 @@
         const d=JSON.parse(r.responseText);if(d.code!==200)throw 0;
         prayerData={};PRAYERS.forEach(p=>{prayerData[p.key]=d.data.timings[p.key]});
         const h=d.data.date.hijri;
-        prayerHijri=`${h.day} ${h.month.ar||h.month.en} ${h.year} هـ`;
+        apiHijri={day:+h.day,monthAr:h.month&&h.month.ar,monthEn:h.month&&h.month.en,year:+h.year,weekdayAr:h.weekday&&h.weekday.ar,gDate:ds};
+        prayerHijri=`${apiHijri.day} ${apiHijri.monthAr||apiHijri.monthEn} ${apiHijri.year} هـ`;
         R.phj.textContent=prayerHijri;
         R.pgr.textContent=`الموافق ${now.getDate()} ${EN_M[now.getMonth()]} ${now.getFullYear()}`;
         renderPG();
@@ -829,8 +840,8 @@
   }
 
   function renderHijPop(){
-    const now=new Date(),h=toHijri(now.getFullYear(),now.getMonth(),now.getDate());
-    hijPop.innerHTML=`<div class="ti-hl">التاريخ الهجري</div><div class="ti-hd">${h.day}</div><div class="ti-hm">${HIJRI_M[h.month-1]||''}</div><div class="ti-hy">${h.year} هـ</div><div class="ti-hw">${AR_D[now.getDay()]}</div>`;
+    const now=new Date(),h=getHijri(now);
+    hijPop.innerHTML=`<div class="ti-hl">التاريخ الهجري</div><div class="ti-hd">${h.day}</div><div class="ti-hm">${h.monthName}</div><div class="ti-hy">${h.year} هـ</div><div class="ti-hw">${AR_D[now.getDay()]}</div>`;
   }
 
   function renderGcPop(){
@@ -1203,8 +1214,8 @@
       const h=now.getHours(),m=now.getMinutes(),h12=h%12||12,ap=h<12?'AM':'PM';
       R.clk.innerHTML=`${P(h12)}:${P(m)}<span class="ti-clk-s">${P(s)} ${ap}</span>`;
       R.en.textContent=`${EN_D[now.getDay()]}, ${EN_M[now.getMonth()]} ${now.getDate()}`;
-      const hij=toHijri(now.getFullYear(),now.getMonth(),now.getDate());
-      R.ar.textContent=`${hij.day} ${HIJRI_M[hij.month-1]||''} ${hij.year}`;
+      const hij=getHijri(now);
+      R.ar.textContent=`${hij.day} ${hij.monthName} ${hij.year}`;
       R.dig.innerHTML=`${P(h)}:${P(m)}:<span class="ti-dig-s">${P(s)}</span>`;
       sH(HN.h,((h%12)+m/60)*30,42);sH(HN.m,(m+s/60)*6,56);sH(HN.s,s*6,62);
       updCountdown();
