@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         🏝️ Time Island & Sidebar Widgets v4
 // @namespace    https://achma-learning.github.io/
-// @version      4.8.0
-// @description  Floating island with clock, dates (EN/Hijri), prayer countdown, live age + sidebar: prayer times (35 Moroccan cities), weather, calendar, life-in-weeks grid, live age counter, stopwatch, notes, editable links. Auto-hide, section toggles, scale/font/blur/color presets, prayer glow. Alt+Ctrl=sidebar, Alt+T=island.
+// @version      4.9.0
+// @description  Floating island with clock, dates (EN/Hijri), prayer countdown, live age + sidebar: prayer times (35 Moroccan cities), weather (redesigned journalist-style popup: today in detail + next 2 days concise, hourly strip, refresh), calendar, life-in-weeks grid, live age counter, stopwatch, notes, editable links. Auto-hide, section toggles, scale/font/blur/color presets, prayer glow. Alt+Ctrl=sidebar, Alt+T=island.
 // @author       Achma
 // @match        *://*/*
 // @grant        GM_addStyle
@@ -311,36 +311,76 @@
 .ti-pp-item.on .pp-name,.ti-pp-item.on .pp-time{color:#fff}
 .ti-pp-cd{text-align:center;margin-top:10px;padding-top:8px;border-top:1px solid var(--tib);font-family:var(--tim);font-size:13px;color:var(--tio);font-weight:600;direction:ltr;unicode-bidi:isolate}
 
-/* Weather popup (hover/click on island weather section) — 3-day forecast */
-.ti-wp{padding:14px;min-width:340px;max-width:400px;border-color:rgba(59,130,246,.3);box-shadow:0 8px 32px rgba(0,0,0,.4),0 0 20px rgba(59,130,246,.12)}
-.ti-wp-hdr{display:flex;justify-content:space-between;align-items:center;padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid var(--tib);gap:10px}
+/* Weather popup — journalist-style briefing: today detailed, next 2 days concise */
+.ti-wp{padding:18px;min-width:440px;max-width:480px;max-height:min(78vh,680px);overflow-y:auto;border-color:rgba(59,130,246,.3);box-shadow:0 12px 40px rgba(0,0,0,.45),0 0 24px rgba(59,130,246,.12)}
+.ti-wp::-webkit-scrollbar{width:6px}
+.ti-wp::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:4px}
+
+/* Header: location + now + controls */
+.ti-wp-hdr{display:flex;justify-content:space-between;align-items:center;padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--tib);gap:12px}
 .ti-wp-loc{flex:1;min-width:0}
-.ti-wp-city{font-size:14px;font-weight:700;color:var(--tit);display:flex;align-items:center;gap:4px}
-.ti-wp-now-desc{font-size:11px;color:var(--tid);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ti-wp-now{display:flex;align-items:center;gap:8px}
-.ti-wp-now-ico{font-size:26px;line-height:1}
-.ti-wp-now-temp{font-size:22px;font-weight:700;color:var(--tit);font-family:var(--tim);font-variant-numeric:tabular-nums}
-.ti-wp-day{margin-bottom:10px}
+.ti-wp-city{font-size:15px;font-weight:700;color:var(--tit);display:flex;align-items:center;gap:5px}
+.ti-wp-now-desc{font-size:12.5px;color:var(--tid);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ti-wp-now{display:flex;align-items:center;gap:10px}
+.ti-wp-now-ico{font-size:34px;line-height:1}
+.ti-wp-now-temp{font-size:28px;font-weight:700;color:var(--tit);font-family:var(--tim);font-variant-numeric:tabular-nums;line-height:1}
+.ti-wp-now-temp .fl{font-size:11px;color:var(--tid);font-weight:500;margin-left:4px}
+.ti-wp-ctrls{display:flex;gap:4px;flex-direction:column}
+.ti-wp-btn{width:26px;height:26px;border-radius:8px;border:1px solid var(--tib);background:var(--tig);color:var(--tid);cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;transition:background .2s,color .2s,transform .15s;padding:0;line-height:1}
+.ti-wp-btn:hover{background:rgba(255,255,255,.1);color:var(--tit)}
+.ti-wp-btn:active{transform:scale(.92)}
+.ti-wp-btn.spin{animation:ti-wp-spin .8s linear infinite}
+@keyframes ti-wp-spin{to{transform:rotate(360deg)}}
+
+/* Today headline summary */
+.ti-wp-summary{font-size:12.5px;color:var(--tia);line-height:1.5;padding:10px 12px;background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.18);border-radius:10px;margin-bottom:12px}
+.ti-wp-summary b{color:var(--tit);font-weight:700}
+
+/* Meta row (humidity, wind, pressure, UV...) */
+.ti-wp-meta{font-size:12px;color:var(--tid);line-height:1.6;margin-bottom:14px;display:flex;flex-wrap:wrap;gap:4px 10px;font-family:var(--tif)}
+.ti-wp-meta .wd,.ti-wp-slot-wind .wd{color:var(--tia2);font-size:12px;line-height:1}
+
+/* Section titles */
+.ti-wp-section-title{font-size:10.5px;color:var(--tid);text-transform:uppercase;letter-spacing:1px;font-weight:600;margin-bottom:8px}
+
+/* Next hours strip */
+.ti-wp-hr{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-bottom:14px}
+.ti-wp-hr-it{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.05);border-radius:9px;padding:8px 4px;text-align:center;display:flex;flex-direction:column;gap:3px;align-items:center}
+.ti-wp-hr-hour{font-size:10px;color:var(--tid);font-weight:600;letter-spacing:.3px}
+.ti-wp-hr-ico{font-size:20px;line-height:1}
+.ti-wp-hr-temp{font-size:13px;font-weight:700;color:var(--tit);font-family:var(--tim);font-variant-numeric:tabular-nums}
+.ti-wp-hr-rain{font-size:9.5px;color:#60a5fa;font-family:var(--tim);font-variant-numeric:tabular-nums}
+
+/* Day cards */
+.ti-wp-day{margin-bottom:14px}
 .ti-wp-day:last-child{margin-bottom:0}
-.ti-wp-day-hdr{display:flex;justify-content:space-between;align-items:baseline;padding-bottom:6px;margin-bottom:6px;border-bottom:1px dashed rgba(255,255,255,.06)}
-.ti-wp-day-name{font-size:12px;font-weight:700;color:var(--tia);text-transform:uppercase;letter-spacing:.5px}
-.ti-wp-day-date{font-size:10px;color:var(--tid);margin-left:6px}
-.ti-wp-day-temps{font-size:11px;font-family:var(--tim);font-variant-numeric:tabular-nums}
+.ti-wp-day-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.ti-wp-day-name{font-size:13.5px;font-weight:700;color:var(--tia)}
+.ti-wp-day-date{font-size:11px;color:var(--tid);margin-left:8px;font-weight:500}
+.ti-wp-day-temps{font-size:13px;font-family:var(--tim);font-variant-numeric:tabular-nums}
 .ti-wp-day-temps .hi{color:var(--tio);font-weight:700}
-.ti-wp-day-temps .lo{color:#60a5fa;font-weight:600;margin-left:4px}
-.ti-wp-slots{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
-.ti-wp-slot{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.05);border-radius:8px;padding:7px 4px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:2px}
-.ti-wp-slot-lbl{font-size:9px;color:var(--tid);text-transform:uppercase;letter-spacing:.4px;font-weight:600}
-.ti-wp-slot-ico{font-size:20px;line-height:1;margin:1px 0}
-.ti-wp-slot-temp{font-size:13px;font-weight:700;color:var(--tit);font-family:var(--tim);font-variant-numeric:tabular-nums;line-height:1.1}
-.ti-wp-slot-desc{font-size:9px;color:var(--tid);line-height:1.15;height:22px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;width:100%;padding:0 1px}
-.ti-wp-slot-wind{font-size:9px;color:var(--tid);font-family:var(--tim);font-variant-numeric:tabular-nums;display:flex;align-items:center;justify-content:center;gap:2px;margin-top:1px}
-.ti-wp-slot-wind .wd,.ti-wp-meta .wd{color:var(--tia2);font-size:11px;line-height:1}
-.ti-wp-slot-rain{font-size:9px;color:#60a5fa;font-family:var(--tim);margin-top:1px;font-variant-numeric:tabular-nums}
-.ti-wp-slot-temp .fl,.ti-wp-now-temp .fl{font-size:10px;color:var(--tid);font-weight:500;margin-left:3px;font-family:var(--tim)}
-.ti-wp-meta{font-size:10.5px;color:var(--tid);line-height:1.5;padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid var(--tib);display:flex;flex-wrap:wrap;gap:2px 6px;font-family:var(--tif)}
-.ti-wp-day-sub{font-size:10px;color:var(--tid);margin-bottom:6px;display:flex;flex-wrap:wrap;gap:2px 8px;font-family:var(--tif)}
-.ti-wp-src{margin-top:10px;padding-top:8px;border-top:1px solid var(--tib);font-size:9px;color:rgba(148,163,184,.5);text-align:center;text-transform:uppercase;letter-spacing:1px;font-family:var(--tim)}
+.ti-wp-day-temps .lo{color:#60a5fa;font-weight:600;margin-left:6px}
+.ti-wp-day-bar{height:5px;border-radius:3px;background:rgba(255,255,255,.06);position:relative;margin:4px 0 8px;overflow:hidden}
+.ti-wp-day-bar-fill{position:absolute;top:0;bottom:0;border-radius:3px;background:linear-gradient(90deg,#60a5fa 0%,#fbbf24 55%,#f97316 100%)}
+.ti-wp-day-sub{font-size:11px;color:var(--tid);margin-bottom:8px;display:flex;flex-wrap:wrap;gap:3px 10px;font-family:var(--tif)}
+
+/* Slot cards (4 per day) */
+.ti-wp-slots{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
+.ti-wp-slot{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.05);border-radius:10px;padding:10px 6px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:3px}
+.ti-wp-slot-lbl{font-size:10px;color:var(--tid);text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+.ti-wp-slot-ico{font-size:24px;line-height:1;margin:2px 0}
+.ti-wp-slot-temp{font-size:14px;font-weight:700;color:var(--tit);font-family:var(--tim);font-variant-numeric:tabular-nums;line-height:1.1}
+.ti-wp-slot-temp .fl{font-size:10px;color:var(--tid);font-weight:500;margin-left:3px;font-family:var(--tim)}
+.ti-wp-slot-desc{font-size:10.5px;color:var(--tid);line-height:1.25;height:26px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;width:100%;padding:0 2px}
+.ti-wp-slot-wind{font-size:10px;color:var(--tid);font-family:var(--tim);font-variant-numeric:tabular-nums;display:flex;align-items:center;justify-content:center;gap:2px;margin-top:1px}
+.ti-wp-slot-rain{font-size:10px;color:#60a5fa;font-family:var(--tim);margin-top:1px;font-variant-numeric:tabular-nums}
+
+/* Footer: source + last-updated */
+.ti-wp-src{margin-top:14px;padding-top:10px;border-top:1px solid var(--tib);font-size:10px;color:rgba(148,163,184,.6);font-family:var(--tim);display:flex;justify-content:space-between;align-items:center;letter-spacing:.5px}
+.ti-wp-src .src{text-transform:uppercase;letter-spacing:1px}
+
+@media (max-width:520px){.ti-wp{min-width:340px;max-width:94vw;padding:14px}.ti-wp-hr{grid-template-columns:repeat(3,1fr)}}
+@media (max-height:720px){.ti-wp{max-height:72vh}}
 
 /* Sidebar */
 #ti-sb{position:fixed;top:0;right:0;width:320px;height:100vh;z-index:2147483645;background:var(--ti);backdrop-filter:blur(24px) saturate(1.8);border-left:1px solid var(--tib);box-shadow:-4px 0 32px rgba(0,0,0,.3);font-family:var(--tif);color:var(--tit);transform:translateX(100%);transition:transform .4s cubic-bezier(.16,1,.3,1);overflow-y:auto;overflow-x:hidden}
@@ -503,7 +543,7 @@
     <div class="ti-d" data-sep="pray-age"></div>
     <div class="ti-s" id="ti-s-age" data-sec="age"><span class="ti-emoji" style="font-size:14px;line-height:1">⏳</span><span class="ti-age" id="ti-age"></span></div>
     <div class="ti-d" data-sep="age-wth"></div>
-    <div class="ti-s" id="ti-s-wth" data-sec="wth"><span class="ti-emoji" style="font-size:14px;line-height:1">🌤️</span><span class="ti-wth" id="ti-wth">--</span></div>`;
+    <div class="ti-s" id="ti-s-wth" data-sec="wth"><span class="ti-emoji" id="ti-wth-ico" style="font-size:14px;line-height:1">🌤️</span><span class="ti-wth" id="ti-wth">--</span></div>`;
   document.body.appendChild(island);
 
   /** Rebuild island className + inline styles from cfg — single source of truth */
@@ -725,7 +765,7 @@
   //  §5  CACHE DOM REFS
   // ═══════════════════════════════════════════
   const $=k=>document.getElementById(k);
-  const R={clk:$('ti-clk'),en:$('ti-en'),ar:$('ti-ar'),np:$('ti-np'),phj:$('ti-phj'),pgr:$('ti-pgr'),pg:$('ti-pg'),pcd:$('ti-pcd'),sc:$('ti-sc'),dig:$('ti-dig'),sw:$('ti-sw'),notes:$('ti-notes'),ww:$('ti-ww'),ci:$('ti-ci'),cd:$('ti-cd'),age:$('ti-age'),habous:$('ti-habous-btn'),wth:$('ti-wth')};
+  const R={clk:$('ti-clk'),en:$('ti-en'),ar:$('ti-ar'),np:$('ti-np'),phj:$('ti-phj'),pgr:$('ti-pgr'),pg:$('ti-pg'),pcd:$('ti-pcd'),sc:$('ti-sc'),dig:$('ti-dig'),sw:$('ti-sw'),notes:$('ti-notes'),ww:$('ti-ww'),ci:$('ti-ci'),cd:$('ti-cd'),age:$('ti-age'),habous:$('ti-habous-btn'),wth:$('ti-wth'),wthIco:$('ti-wth-ico')};
 
   /** Update Habous monthly link to match the selected city (#14) */
   function syncHabousLink(){
@@ -891,10 +931,60 @@
   }
 
   // ── Normalizers — both sources return the same internal shape ──
+  // Build 6-tile "Next Hours" strip from wttr.in hourly arrays (3h granularity).
+  // Starts from the first slot >= current hour today; pads from tomorrow if short.
+  function hourlyFromWttr(days){
+    const now=new Date(),nowH=now.getHours();
+    const out=[];
+    const push=(hr,hour)=>{
+      if(!hr)return;
+      const hDesc=hr.weatherDesc?.[0]?.value||'N/A';
+      out.push({
+        hour,temp:+hr.tempC,feels:+hr.FeelsLikeC,desc:hDesc,icon:WICON[hDesc]||'🌤️',
+        chanceRain:+(hr.chanceofrain||0),windKmph:+hr.windspeedKmph,
+        windArrow:WDIR[hr.winddir16Point]||'·',
+      });
+    };
+    const today=days[0]?.hourly||[];
+    for(let i=0;i<today.length&&out.length<6;i++){
+      const h=+((today[i].time||'0').padStart(4,'0')).slice(0,2);
+      if(h>=nowH)push(today[i],h);
+    }
+    if(out.length<6){
+      const tmr=days[1]?.hourly||[];
+      for(let i=0;i<tmr.length&&out.length<6;i++){
+        const h=+((tmr[i].time||'0').padStart(4,'0')).slice(0,2);
+        push(tmr[i],h);
+      }
+    }
+    return out;
+  }
+
+  function hourlyFromOpenMeteo(H){
+    if(!H||!H.time)return [];
+    const now=new Date();
+    const nowISO=now.toISOString().slice(0,13); // YYYY-MM-DDTHH
+    let start=H.time.findIndex(t=>t>=nowISO);
+    if(start<0)start=0;
+    const out=[];
+    for(let i=start;i<H.time.length&&out.length<6;i++){
+      const [hDesc,hIcon]=wmoOf(H.weather_code?.[i]);
+      const wdeg=H.wind_direction_10m?.[i];
+      out.push({
+        hour:+H.time[i].slice(11,13),
+        temp:Math.round(+H.temperature_2m?.[i]),feels:Math.round(+H.apparent_temperature?.[i]),
+        desc:hDesc,icon:hIcon,chanceRain:+(H.precipitation_probability?.[i]||0),
+        windKmph:Math.round(+H.wind_speed_10m?.[i]),windArrow:degToArrow(wdeg),
+      });
+    }
+    return out;
+  }
+
   function normalizeWttr(d,c){
     const cur=d.current_condition?.[0];if(!cur)throw 0;
     const desc=cur.weatherDesc?.[0]?.value||'N/A';
-    const forecast=(Array.isArray(d.weather)?d.weather:[]).slice(0,3).map(day=>{
+    const weatherArr=Array.isArray(d.weather)?d.weather:[];
+    const forecast=weatherArr.slice(0,3).map(day=>{
       const astro=day.astronomy?.[0]||{};
       const slots=WTH_SLOTS.map(s=>{
         const hr=day.hourly?.[s.idx];
@@ -922,6 +1012,7 @@
       windArrow:WDIR[cur.winddir16Point]||'·',pressure:+cur.pressure,visibility:+cur.visibility,
       cloudCover:+cur.cloudcover,uvIndex:+cur.uvIndex,precipMM:+cur.precipMM,
       cityAr:c[1],cityFr:c[2],cityEn:c[3],forecast,
+      hourly:hourlyFromWttr(weatherArr),
     };
   }
 
@@ -963,6 +1054,7 @@
       windArrow:degToArrow(wdeg),pressure:Math.round(+cur.pressure_msl),
       visibility:null,cloudCover:+cur.cloud_cover,uvIndex:null,precipMM:+(cur.precipitation||0),
       cityAr:c[1],cityFr:c[2],cityEn:c[3],forecast,
+      hourly:hourlyFromOpenMeteo(H),
     };
   }
 
@@ -981,17 +1073,43 @@
   }
 
   function wireWeatherExt(container){
-    container.querySelectorAll('.ti-ww-ext').forEach(btn=>{
+    container.querySelectorAll('.ti-ww-ext,.ti-wp-ext').forEach(btn=>{
       btn.addEventListener('click',e=>{
         e.stopPropagation();
         window.open(weatherUrl(),'_blank','noopener,noreferrer');
+      });
+    });
+    container.querySelectorAll('.ti-wp-refresh').forEach(btn=>{
+      btn.addEventListener('click',e=>{
+        e.stopPropagation();
+        if(btn.classList.contains('spin'))return;
+        btn.classList.add('spin');
+        fetchWeather();
+        setTimeout(()=>btn.classList.remove('spin'),3000);
       });
     });
   }
 
   function updIslandWeather(){
     if(!weatherData){R.wth.textContent='--';return}
+    if(R.wthIco&&weatherData.icon)R.wthIco.textContent=weatherData.icon;
     R.wth.textContent=`${weatherData.temp}°C`;
+  }
+
+  // Craft a "journalist" headline from today's forecast: temps + rain/wind highlights.
+  function todaySummary(day){
+    if(!day)return '';
+    const parts=[];
+    const desc=day.slots?.find(s=>s&&s.desc)?.desc||day.desc||'';
+    parts.push(`<b>Today:</b> ${escHtml(desc||'—')}, high <b>${day.maxTemp}°</b> · low <b>${day.minTemp}°</b>.`);
+    const slots=day.slots||[];
+    const rainSlot=slots.find(s=>s&&s.chanceRain>=50);
+    if(rainSlot)parts.push(`Rain likely in the <b>${rainSlot.label.toLowerCase()}</b> (${rainSlot.chanceRain}%).`);
+    else if(day.chanceRainMax>=30)parts.push(`Slight chance of rain (${day.chanceRainMax}%).`);
+    const windy=slots.find(s=>s&&s.windKmph>=30);
+    if(windy)parts.push(`Windy around <b>${windy.windKmph} km/h</b>.`);
+    if(day.uvIndex>=7)parts.push(`High UV index <b>${day.uvIndex}</b> — sun protection recommended.`);
+    return parts.join(' ');
   }
 
   function renderWthPop(){
@@ -1002,7 +1120,7 @@
     const w=weatherData;
     const curMeta=[];
     curMeta.push(`💧 ${w.humidity}%`);
-    curMeta.push(`💨 ${w.wind} km/h <span class="wd">${w.windArrow}</span>${w.windDir?' '+w.windDir:''}`);
+    curMeta.push(`💨 ${w.wind} km/h <span class="wd">${w.windArrow}</span>${w.windDir?' '+escHtml(w.windDir):''}`);
     if(w.pressure)curMeta.push(`🌡️ ${w.pressure} hPa`);
     if(w.cloudCover!=null&&!isNaN(w.cloudCover))curMeta.push(`☁️ ${w.cloudCover}%`);
     if(w.visibility!=null&&!isNaN(w.visibility)&&w.visibility>0)curMeta.push(`👁️ ${w.visibility} km`);
@@ -1010,6 +1128,7 @@
     if(w.precipMM>0)curMeta.push(`🌧️ ${w.precipMM} mm`);
     const feelsTxt=(!isNaN(w.feels)&&w.feels!==w.temp)?` <span class="fl">(feels ${w.feels}°)</span>`:'';
 
+    // Header — location, now, controls (refresh + open-in-tab stacked vertically to save width)
     let h=`<div class="ti-wp-hdr">
       <div class="ti-wp-loc">
         <div class="ti-wp-city">📍 ${escHtml(w.cityEn)}</div>
@@ -1018,37 +1137,76 @@
       <div class="ti-wp-now">
         <div class="ti-wp-now-ico">${w.icon}</div>
         <div class="ti-wp-now-temp">${escHtml(w.temp)}°${feelsTxt}</div>
-        <button class="ti-ww-ext" title="Open weather in new tab" aria-label="Open weather in new tab">↗</button>
+        <div class="ti-wp-ctrls">
+          <button class="ti-wp-btn ti-wp-refresh" title="Refresh weather" aria-label="Refresh weather">♻</button>
+          <button class="ti-wp-btn ti-wp-ext" title="Open weather in new tab" aria-label="Open weather in new tab">↗</button>
+        </div>
       </div>
-    </div>
-    <div class="ti-wp-meta">${curMeta.join(' · ')}</div>`;
+    </div>`;
 
+    // Today's journalist-style headline
     const days=(w.forecast||[]).slice(0,3);
+    const summary=todaySummary(days[0]);
+    if(summary)h+=`<div class="ti-wp-summary">${summary}</div>`;
+
+    // Current meta chips
+    h+=`<div class="ti-wp-meta">${curMeta.join(' · ')}</div>`;
+
+    // Next hours strip (today, 3h cadence via wttr or hourly via open-meteo)
+    const hourly=(w.hourly||[]).slice(0,6);
+    if(hourly.length){
+      h+='<div class="ti-wp-section-title">Next Hours</div><div class="ti-wp-hr">';
+      hourly.forEach(hr=>{
+        const hh=String(hr.hour).padStart(2,'0');
+        h+=`<div class="ti-wp-hr-it" title="${escHtml(hr.desc)}">
+          <div class="ti-wp-hr-hour">${hh}h</div>
+          <div class="ti-wp-hr-ico">${hr.icon}</div>
+          <div class="ti-wp-hr-temp">${hr.temp}°</div>
+          ${hr.chanceRain>0?`<div class="ti-wp-hr-rain">🌧️ ${hr.chanceRain}%</div>`:''}
+        </div>`;
+      });
+      h+='</div>';
+    }
+
     if(!days.length){
       h+='<div style="padding:8px;text-align:center;color:var(--tid);font-size:12px">Forecast unavailable</div>';
     }else{
+      // Week min/max for gradient bars
+      const weekMin=Math.min(...days.map(d=>d.minTemp));
+      const weekMax=Math.max(...days.map(d=>d.maxTemp));
+      const span=Math.max(1,weekMax-weekMin);
+
       days.forEach((day,di)=>{
         const dateObj=new Date(day.date+'T00:00:00');
         const dayName=di===0?'Today':di===1?'Tomorrow':EN_D[dateObj.getDay()];
         const dateStr=`${EN_DS[dateObj.getDay()]} · ${EN_M[dateObj.getMonth()]} ${dateObj.getDate()}`;
         const sub=[];
-        if(day.sunrise)sub.push(`🌅 ${day.sunrise}`);
-        if(day.sunset)sub.push(`🌇 ${day.sunset}`);
+        if(day.sunrise)sub.push(`🌅 ${escHtml(day.sunrise)}`);
+        if(day.sunset)sub.push(`🌇 ${escHtml(day.sunset)}`);
         if(day.uvIndex>0)sub.push(`UV ${day.uvIndex}`);
         if(day.chanceRainMax>0)sub.push(`🌧️ ${day.chanceRainMax}%`);
-        if(day.moonPhase)sub.push(`🌙 ${day.moonPhase}${day.moonIllum?' '+day.moonIllum+'%':''}`);
+        if(day.moonPhase)sub.push(`🌙 ${escHtml(day.moonPhase)}${day.moonIllum?' '+escHtml(day.moonIllum)+'%':''}`);
+
+        // Gradient bar position: left/right % clipped to [0,100]
+        const leftPct=Math.max(0,Math.min(100,((day.minTemp-weekMin)/span)*100));
+        const rightPct=Math.max(0,Math.min(100,((weekMax-day.maxTemp)/span)*100));
+
+        if(di===0){
+          h+=`<div class="ti-wp-section-title" style="margin-top:4px">Today · Morning · Afternoon · Evening · Night</div>`;
+        }
         h+=`<div class="ti-wp-day">
           <div class="ti-wp-day-hdr">
             <div><span class="ti-wp-day-name">${dayName}</span><span class="ti-wp-day-date">${dateStr}</span></div>
             <div class="ti-wp-day-temps"><span class="hi">▲ ${day.maxTemp}°</span><span class="lo">▼ ${day.minTemp}°</span></div>
-          </div>`;
+          </div>
+          <div class="ti-wp-day-bar"><div class="ti-wp-day-bar-fill" style="left:${leftPct.toFixed(1)}%;right:${rightPct.toFixed(1)}%"></div></div>`;
         if(sub.length)h+=`<div class="ti-wp-day-sub">${sub.join(' · ')}</div>`;
         h+='<div class="ti-wp-slots">';
         day.slots.forEach(sl=>{
           if(!sl){h+='<div class="ti-wp-slot"></div>';return}
           const feels=(!isNaN(sl.feels)&&sl.feels!==sl.temp)?`<span class="fl">(${sl.feels}°)</span>`:'';
           h+=`<div class="ti-wp-slot">
-            <div class="ti-wp-slot-lbl">${sl.label}</div>
+            <div class="ti-wp-slot-lbl">${escHtml(sl.label)}</div>
             <div class="ti-wp-slot-ico">${sl.icon}</div>
             <div class="ti-wp-slot-temp">${sl.temp}°${feels}</div>
             <div class="ti-wp-slot-desc" title="${escHtml(sl.desc)}">${escHtml(sl.desc)}</div>
@@ -1059,7 +1217,10 @@
         h+='</div></div>';
       });
     }
-    h+=`<div class="ti-wp-src">source: ${escHtml(w.source)}</div>`;
+
+    // Footer: source + last-updated
+    const updStr=w.fetchedAt?new Date(w.fetchedAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'—';
+    h+=`<div class="ti-wp-src"><span class="src">source: ${escHtml(w.source)}</span><span>updated ${escHtml(updStr)}</span></div>`;
     wthPop.innerHTML=h;
     wireWeatherExt(wthPop);
   }
@@ -1084,7 +1245,7 @@
     const city=c[3].replace(/\s+/g,'+');
     GM_xmlhttpRequest({method:'GET',url:`https://wttr.in/${city}?format=j1`,timeout:8000,
       onload(r){
-        try{const d=JSON.parse(r.responseText);weatherData=normalizeWttr(d,c);applyWeather();}
+        try{const d=JSON.parse(r.responseText);weatherData=normalizeWttr(d,c);weatherData.fetchedAt=Date.now();applyWeather();}
         catch{fetchWeatherFallback(c);}
       },
       onerror(){fetchWeatherFallback(c);},
@@ -1100,7 +1261,7 @@
       +`&timezone=auto&forecast_days=3&wind_speed_unit=kmh`;
     GM_xmlhttpRequest({method:'GET',url,timeout:8000,
       onload(r){
-        try{const d=JSON.parse(r.responseText);weatherData=normalizeOpenMeteo(d,c);applyWeather();}
+        try{const d=JSON.parse(r.responseText);weatherData=normalizeOpenMeteo(d,c);weatherData.fetchedAt=Date.now();applyWeather();}
         catch{failWeather();}
       },
       onerror(){failWeather();},
@@ -1219,6 +1380,8 @@
   }
   // Close popups on outside click (click mode)
   document.addEventListener('click',()=>{if(cfg.clickPopups)closeAllPopups()});
+  // Escape always closes any open popup
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeAllPopups()});
 
   hoverSetup('ti-s-en',calPop,()=>{initCal();renderCalPop()},false);
   hoverSetup('ti-s-ar',hijPop,renderHijPop,true);
