@@ -123,6 +123,9 @@
   let apiHijri = null;  // { day, monthAr, monthEn, year, weekdayAr, gDate } from Aladhan; null until first fetch
   let swOn=false,swT0=0,swE=0,swI=null;
   let prayGlow=false;                     // transient — true when within GLOW_MIN of adhan
+  let glowTimeoutId=null;                 // setTimeout reference for auto-stop
+  let glowSuppressed=false;              // true once glow has timed-out for current prayer
+  let lastGlowPrayer='';                 // prayer name that last triggered glow
   const GLOW_MIN=15;                      // glow lasts 15 minutes after each prayer time
   let weatherData = null;                 // cached current weather for island + popup
   const cfg = {
@@ -144,7 +147,8 @@
     showLifeCal: gGet('ti_showLifeCal', true),
     lifeBday:    gGet('ti_lifeBday', ''),               // ISO date string e.g. '2000-01-15'
     lifeExpect:  gGet('ti_lifeExpect', 80),             // years
-    glowDur:     gGet('ti_glowDur', 3),                // 1 | 3 | 5 seconds
+    glowDur:        gGet('ti_glowDur', 3),                // 1 | 3 | 5 seconds
+    glowDurTimeout: gGet('ti_glowDurTimeout', 8),        // 3 | 8 | 42 seconds
     showLiveAge: gGet('ti_showLiveAge', true),
     secAge:      gGet('ti_secAge', false),              // live age section on island
     secWeather:  gGet('ti_secWeather', true),           // weather indicator section on island
@@ -723,6 +727,7 @@
       <div class="ti-set-row"><span class="ti-set-label">Island Scale</span><select class="ti-set-sel" id="ti-sel-scale"><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option><option value="xl">XL</option></select></div>
       <div class="ti-set-row"><span class="ti-set-label">Font Preset</span><select class="ti-set-sel" id="ti-sel-font"><option value="default">Default</option><option value="digital">Digital</option><option value="papyrus">Papyrus</option></select></div>
       <div class="ti-set-row"><span class="ti-set-label">Prayer Glow Speed</span><select class="ti-set-sel" id="ti-sel-glow"><option value="1">Fast (1s)</option><option value="3">Normal (3s)</option><option value="5">Slow (5s)</option></select></div>
+      <div class="ti-set-row"><span class="ti-set-label">Prayer Glow Duration</span><select class="ti-set-sel" id="ti-sel-glow-dur"><option value="3">Short (3s)</option><option value="8">Normal (8s)</option><option value="42">Long (42s)</option></select></div>
 
       <div class="ti-set-row"><span class="ti-set-label">Blur</span><div class="ti-set-range-row"><input type="range" class="ti-set-range" id="ti-rng-blur" min="0" max="40" value="${cfg.islandBlur}"><span class="ti-set-range-val" id="ti-blur-val">${cfg.islandBlur}px</span></div></div>
 
@@ -881,11 +886,20 @@
       const actT=tMin(prayerData[act]);
       // Minutes since this prayer started (handle midnight wrap for Isha)
       const elapsed = nm >= actT ? nm - actT : (1440 - actT) + nm;
+      // Reset suppression when a new prayer takes over
+      if(act!==lastGlowPrayer){ glowSuppressed=false; lastGlowPrayer=act; }
       // Exclude Sunrise — it's not a prayer, just an informational time
-      glowNow = act !== 'Sunrise' && elapsed < GLOW_MIN;
+      glowNow = act !== 'Sunrise' && elapsed < GLOW_MIN && !glowSuppressed;
     }
     if(glowNow!==prayGlow){
       prayGlow=glowNow;
+      if(prayGlow){
+        // Auto-stop after cfg.glowDurTimeout seconds
+        clearTimeout(glowTimeoutId);
+        glowTimeoutId=setTimeout(()=>{
+          glowSuppressed=true; prayGlow=false; syncIslandClasses();
+        }, cfg.glowDurTimeout*1000);
+      }
       syncIslandClasses();   // only rebuilds on actual transition
     }
   }
@@ -1408,6 +1422,13 @@
   selGlow.addEventListener('change',e=>{
     cfg.glowDur=+e.target.value;gSet('ti_glowDur',cfg.glowDur);
     if(prayGlow)syncIslandClasses();
+  });
+
+  // --- Glow timeout duration ---
+  const selGlowDur=$('ti-sel-glow-dur');
+  selGlowDur.value=cfg.glowDurTimeout;
+  selGlowDur.addEventListener('change',e=>{
+    cfg.glowDurTimeout=+e.target.value; gSet('ti_glowDurTimeout',cfg.glowDurTimeout);
   });
 
   // --- Blur slider (#9) ---
