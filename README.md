@@ -1,4 +1,7 @@
 # time-widget-userscript
+---
+main version is this : https://github.com/achma-learning/time-widget-userscript/raw/refs/heads/main/time-island-v4.user.js
+---
 # 🏝️ Time Island — Userscript v4.5.0
 
 > A floating island widget + sidebar dashboard for every website. Prayer times, weather, calendar, life tracker, and more — designed for Moroccan users with full Arabic/RTL support.
