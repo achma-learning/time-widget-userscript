@@ -1,23 +1,30 @@
 # time-widget-userscript
----
-main version is this : https://github.com/achma-learning/time-widget-userscript/raw/refs/heads/main/time-island-v4.user.js
----
-# 🏝️ Time Island — Userscript v4.5.0
+# 🏝️ Time Island — Userscript v4.7.4
 
 > A floating island widget + sidebar dashboard for every website. Prayer times, weather, calendar, life tracker, and more — designed for Moroccan users with full Arabic/RTL support.
 
 ---
 
-## ✨ What's New in v4.5.0
+## ✨ What's New in v4.7.4
 
-### 💀 Live Age Widget
-Real-time age counter inspired by [Mortality](https://github.com/alphabt/mortality) — ticking every second, showing years, months, days, hours, minutes, and seconds since your birthday. Total days alive displayed below. Shares the birthday input with Life Calendar — set it once, both update.
+### 📐 Auto-Scale by Screen Width
+Island size now defaults to **Auto** — picks Small on laptops (≤1366px), Medium on typical desktops (≤1680px), and Large on wide screens. Manual override still available in Settings.
 
-### ⏳ Live Age on Floating Island
-New toggleable island section (`⏳ Live Age` in Settings → Island Sections) displays a compact `22y 0m 15d` on the island bar.
+### 🌗 OS Light/Dark Theme
+Detects `prefers-color-scheme` at startup. Dark OS → existing deep-glass style. Light OS → warm white background with dark text, no configuration needed.
 
-### 🕌 Prayer Glow Speed Control
-The animated white/purple/gold border glow during prayer time now has a speed selector: **Fast (1s)**, **Normal (3s, default)**, or **Slow (5s)**.
+### 🔍 Command Palette
+Press **Alt+Ctrl+Space** to open a floating search palette. Type to fuzzy-search across all 40 cities, setting toggles, and quick links. Arrow keys navigate, Enter picks, Escape dismisses.
+
+### 📡 Weather Reconnect
+Weather automatically re-fetches when the browser regains network connectivity (`window online` event).
+
+---
+
+## ✨ What's New in v4.7.3
+
+### ⏱️ Prayer Glow Duration
+The animated border glow at prayer time now has a **duration timeout**: choose **Short (3s)**, **Normal (8s, default)**, or **Long (42s)**. After the chosen duration the glow stops, and won't re-trigger until the next prayer — independent from the existing Glow Speed setting.
 
 ---
 
@@ -32,19 +39,21 @@ A draggable pill-shaped bar at the top of every page:
 | 🌙 Hijri | Hijri date (computed locally) | Hijri detail card |
 | 🕌 Prayer | Next prayer countdown (bidi-safe) | Full prayer times grid |
 | ⏳ Age | Live age (compact) | — |
+| 🌤️ Weather | Temperature + condition emoji | Full weather popup |
 
 **All sections can be individually shown/hidden** from Settings → Island Sections.
 
 ### Island Customization
 - **Position**: Top Center / Top Left / Top Right / Bottom Center
-- **Scale**: Small (0.82×) / Medium / Large (1.18×) / XL (1.38×)
+- **Scale**: Auto (screen-width-based) / Small (0.82×) / Medium / Large (1.18×) / XL (1.38×)
 - **Font Presets**: Default / Digital (Orbitron + Inter + Noto Sans Arabic + Rubik) / Papyrus
 - **Background**: Default dark glass / Custom hex color / Fully transparent
 - **Blur**: Adjustable 0–40px slider
+- **OS Theme**: Automatically light or dark based on system preference
 - **Emoji toggle**: Show/hide section icons
 - **Lock position**: Prevent accidental drag
 - **Auto-hide**: Windows-style — island slides off-screen, reappears when mouse approaches the edge
-- **Prayer glow**: Animated border (white → purple → gold) for 15 minutes after each adhan
+- **Prayer glow**: Animated border (white → purple → gold) for a configurable duration after each adhan, with independent speed and duration settings
 
 ---
 
@@ -62,6 +71,8 @@ Toggle with **Alt+Ctrl** or the close button.
 - Synced with selected prayer city
 - Temperature, description, humidity, wind, feels-like
 - Weather icons mapped to wttr.in conditions
+- Rain alert emoji (🌧️❗) on island when rain detected
+- Auto-refresh every 30 minutes; instant refresh on network reconnect
 
 ### 📅 Calendar
 - Monthly view with today highlighted
@@ -71,7 +82,7 @@ Toggle with **Alt+Ctrl** or the close button.
 - SVG clock face with hour/minute/second hands
 - Digital time display below
 
-### ⏱️ Stopwatch
+### ⱱ️ Stopwatch
 - Start/stop/reset with centisecond precision
 
 ### 📝 Quick Notes
@@ -108,11 +119,12 @@ Toggle with **Alt+Ctrl** or the close button.
 | Show Island Emojis | Toggle | On |
 | Show Hover Popups | Toggle | On |
 | Auto-Hide Island | Toggle | Off |
-| Island Sections (×5) | Toggles | All On except Age |
+| Island Sections (×6) | Toggles | All On except Age |
 | Island Position | Select | Top Center |
-| Island Scale | Select | Medium |
+| Island Scale | Select | Auto |
 | Font Preset | Select | Default |
 | Prayer Glow Speed | Select | Normal (3s) |
+| Prayer Glow Duration | Select | Normal (8s) |
 | Blur | Range 0–40px | 24px |
 | Background | Color picker / Hex / Default / Transparent | Default |
 
@@ -124,6 +136,7 @@ Toggle with **Alt+Ctrl** or the close button.
 |----------|--------|
 | `Alt + Ctrl` | Toggle sidebar |
 | `Alt + T` | Toggle island visibility |
+| `Alt + Ctrl + Space` | Open command palette (search cities, toggles, links) |
 
 ---
 
@@ -134,7 +147,8 @@ Toggle with **Alt+Ctrl** or the close button.
 - **Rendering**: `requestAnimationFrame` for clock/age ticks, minute-boundary prayer grid re-renders
 - **Bidi**: Arabic prayer names wrapped in `unicode-bidi:isolate` spans to prevent RTL/LTR reordering
 - **Compatibility**: Tampermonkey / Violentmonkey on all Chromium + Firefox browsers
-- **Performance**: DOM refs cached at init, observers only where needed, no polling loops
+- **Performance**: DOM refs cached at init, intervals paused on tab hide, no polling loops
+- **Theme**: `prefers-color-scheme` read once at startup; light-mode `:root` override injected conditionally
 
 ---
 
@@ -147,6 +161,16 @@ Toggle with **Alt+Ctrl** or the close button.
 ---
 
 ## 📝 Changelog
+
+### v4.7.4
+- ✨ Auto-scale island by screen width (`autoScale()`); `islandScale` defaults to `'auto'`
+- ✨ OS light/dark theme detection via `prefers-color-scheme`
+- ✨ Command palette (Alt+Ctrl+Space) — fuzzy search cities, settings, links
+- ✨ Weather re-fetches automatically on network reconnect (`window online`)
+
+### v4.7.3
+- ✨ Prayer Glow Duration setting (3s / 8s / 42s) — glow auto-stops after chosen time, suppressed until next prayer
+- 🔧 Glow suppression state (`glowSuppressed`, `lastGlowPrayer`) prevents re-trigger within same prayer window
 
 ### v4.5.0
 - ✨ Live Age widget (sidebar + island section)
@@ -165,8 +189,8 @@ Toggle with **Alt+Ctrl** or the close button.
 ### v4.3.0
 - ✨ Island section toggles (show/hide clock, date, hijri, prayer)
 - ✨ Editable Quick Links (add/remove, persisted)
-- 🐛 Fixed drag stuck at small zoom (#8)
-- ✨ Blur slider for transparent mode (#9)
+- 🐛 Fixed drag stuck at small zoom
+- ✨ Blur slider for transparent mode
 
 ### v4.2.2
 - ✨ Prayer time border glow (animated white/purple/gold)
