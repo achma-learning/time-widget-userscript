@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         🏝️ Time Island & Sidebar Widgets v4
 // @namespace    https://achma-learning.github.io/
-// @version      4.7.3
-// @description  Floating island with clock, dates (EN/Hijri), prayer countdown, live age + sidebar: prayer times (35 Moroccan cities), weather, calendar, life-in-weeks grid, live age counter, stopwatch, notes, editable links. Auto-hide, section toggles, scale/font/blur/color presets, prayer glow. Alt+Ctrl=sidebar, Alt+T=island. Weather UI redesigned: widget (today detailed + tomorrow/after-tomorrow 2-col), popup (today detailed + 2 compact rows), dynamic island emoji with 🌧️❗ rain alert.
+// @version      4.7.4
+// @description  Floating island with clock, dates (EN/Hijri), prayer countdown, live age + sidebar: prayer times (35 Moroccan cities), weather, calendar, life-in-weeks grid, live age counter, stopwatch, notes, editable links. Auto-hide, section toggles, scale/font/blur/color presets, prayer glow. Alt+Ctrl=sidebar, Alt+T=island, Alt+Ctrl+Space=command palette. Auto-scale by screen width, OS light/dark theme, weather refresh on reconnect.
 // @author       Achma
 // @match        *://*/*
 // @grant        GM_addStyle
@@ -128,12 +128,13 @@
   let lastGlowPrayer='';                 // prayer name that last triggered glow
   const GLOW_MIN=15;                      // glow lasts 15 minutes after each prayer time
   let weatherData = null;                 // cached current weather for island + popup
+  const osDark=window.matchMedia('(prefers-color-scheme: dark)').matches;
   const cfg = {
     islandPos:   gGet('ti_pos','top-center'),
     showIsland:  gGet('ti_showIsland', true),
     showClock:   gGet('ti_showClock', true),
     lockIsland:  gGet('ti_lockIsland', false),
-    islandScale: gGet('ti_islandScale', 'medium'),   // small | medium | large | xl
+    islandScale: gGet('ti_islandScale', 'auto'),      // auto | small | medium | large | xl
     fontPreset:  gGet('ti_fontPreset', 'default'),    // default | digital | papyrus
     showEmojis:  gGet('ti_showEmojis', true),
     showPopups:  gGet('ti_showPopups', true),
@@ -163,6 +164,13 @@
   let userLinks=JSON.parse(gGet('ti_links',JSON.stringify(DEFAULT_LINKS)));
 
   function getCity(){ return CITIES[selCity] || CITIES.find(c=>c[3]==='Marrakech') || CITIES[0]; }
+
+  function autoScale(){
+    const w=window.innerWidth;
+    if(w<=1366)return'small';
+    if(w<=1680)return'medium';
+    return'large';
+  }
 
   // ═══════════════════════════════════════════
   //  §2b  GOOGLE FONTS LOADER (for presets)
@@ -526,7 +534,17 @@
 .ti-lc-legend{display:flex;justify-content:center;gap:10px;margin-top:6px;font-size:8px;color:var(--tid)}
 .ti-lc-leg-dot{display:inline-block;width:7px;height:7px;border-radius:1px;margin-right:3px;vertical-align:middle}
 .ti-lc-prompt{text-align:center;padding:16px 10px;color:var(--tid);font-size:12px}
+
+/* ── Command palette ── */
+#ti-palette-box{position:fixed;top:20%;left:50%;transform:translateX(-50%);z-index:2147483647;background:var(--ti);border:1px solid var(--tib);border-radius:12px;padding:12px;width:320px;box-shadow:0 8px 32px rgba(0,0,0,.5);backdrop-filter:blur(20px)}
+#ti-palette-inp{width:100%;box-sizing:border-box;background:transparent;border:none;color:var(--tit);font-family:var(--tif);font-size:14px;outline:none;padding:4px 0}
+#ti-palette-inp::placeholder{color:var(--tid)}
+#ti-palette-res{max-height:200px;overflow-y:auto;margin-top:8px;font-size:12px;color:var(--tit)}
+.ti-pal-item{padding:6px 8px;border-radius:6px;cursor:pointer}
+.ti-pal-item:hover,.ti-pal-item.hl{background:var(--tib)}
+.ti-pal-cat{font-size:10px;color:var(--tid);padding:4px 8px 2px;text-transform:uppercase;letter-spacing:.06em}
   `);
+  if(!osDark)GM_addStyle(`:root{--ti:rgba(255,255,245,.92);--tit:#1e293b;--tid:#475569;--tib:rgba(0,0,0,.08);--tig:rgba(0,0,0,.04)}`);
 
   // ═══════════════════════════════════════════
   //  §4  BUILD DOM
@@ -556,7 +574,8 @@
     if(!cfg.showIsland) cls+=' ti-hide';
     if(cfg.lockIsland)  cls+=' ti-locked';
     if(!cfg.showEmojis)  cls+=' ti-no-emoji';
-    if(cfg.islandScale!=='medium') cls+=' ti-scale-'+cfg.islandScale;
+    const scale=cfg.islandScale==='auto'?autoScale():cfg.islandScale;
+    if(scale!=='medium') cls+=' ti-scale-'+scale;
     if(cfg.fontPreset!=='default') cls+=' ti-font-'+cfg.fontPreset;
     if(cfg.islandBg==='transparent') cls+=' ti-bg-clear';
     if(prayGlow) cls+=' ti-pray-glow';
@@ -724,7 +743,7 @@
       <div class="ti-set-divider"></div>
 
       <div class="ti-set-row"><span class="ti-set-label">Island Position</span><select class="ti-set-sel" id="ti-sel-pos"><option value="top-center">Top Center</option><option value="top-left">Top Left</option><option value="top-right">Top Right</option><option value="bottom-center">Bottom Center</option></select></div>
-      <div class="ti-set-row"><span class="ti-set-label">Island Scale</span><select class="ti-set-sel" id="ti-sel-scale"><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option><option value="xl">XL</option></select></div>
+      <div class="ti-set-row"><span class="ti-set-label">Island Scale</span><select class="ti-set-sel" id="ti-sel-scale"><option value="auto">Auto</option><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option><option value="xl">XL</option></select></div>
       <div class="ti-set-row"><span class="ti-set-label">Font Preset</span><select class="ti-set-sel" id="ti-sel-font"><option value="default">Default</option><option value="digital">Digital</option><option value="papyrus">Papyrus</option></select></div>
       <div class="ti-set-row"><span class="ti-set-label">Prayer Glow Speed</span><select class="ti-set-sel" id="ti-sel-glow"><option value="1">Fast (1s)</option><option value="3">Normal (3s)</option><option value="5">Slow (5s)</option></select></div>
       <div class="ti-set-row"><span class="ti-set-label">Prayer Glow Duration</span><select class="ti-set-sel" id="ti-sel-glow-dur"><option value="3">Short (3s)</option><option value="8">Normal (8s)</option><option value="42">Long (42s)</option></select></div>
@@ -1494,8 +1513,69 @@
   // ═══════════════════════════════════════════
   //  §15  SHORTCUTS & DRAG
   // ═══════════════════════════════════════════
+  function commandPalette(){
+    if(document.getElementById('ti-palette-box'))return;
+    const box=document.createElement('div');
+    box.id='ti-palette-box';
+    box.innerHTML=`<input id="ti-palette-inp" placeholder="City, toggle, link…"><div id="ti-palette-res"></div>`;
+    document.body.appendChild(box);
+    const inp=box.querySelector('#ti-palette-inp');
+    const res=box.querySelector('#ti-palette-res');
+    inp.focus();
+    let hlIdx=-1;
+    function buildItems(q){
+      const items=[];
+      CITIES.forEach(c=>{
+        if(!q||norm(c[1]).includes(q)||norm(c[2]).includes(q)||norm(c[3]).includes(q))
+          items.push({type:'city',idx:CITIES.indexOf(c),label:`${c[1]} — ${c[2]}`});
+      });
+      ['lockIsland','showEmojis','showPopups','autoHide','showLiveAge','showLifeCal'].forEach(k=>{
+        const label=k.replace(/([A-Z])/g,' $1').toLowerCase();
+        if(!q||label.includes(q)) items.push({type:'toggle',key:k,label:(cfg[k]?'Disable ':'Enable ')+label});
+      });
+      userLinks.forEach(lk=>{
+        if(!q||lk.n.toLowerCase().includes(q)||lk.u.toLowerCase().includes(q))
+          items.push({type:'link',url:lk.u,label:lk.n});
+      });
+      return items;
+    }
+    function render(q){
+      hlIdx=-1;
+      const items=buildItems(q);
+      if(!items.length){res.innerHTML='<div class="ti-pal-cat">No results</div>';res._items=[];return;}
+      res.innerHTML=items.slice(0,9).map((it,i)=>`<div class="ti-pal-item" data-i="${i}">${escHtml(it.label)}</div>`).join('');
+      res._items=items;
+      res.querySelectorAll('.ti-pal-item').forEach((el,i)=>{
+        el.addEventListener('mousedown',ev=>{ev.preventDefault();pick(items[i]);});
+      });
+    }
+    function pick(it){
+      if(it.type==='city')pickCity(it.idx);
+      else if(it.type==='toggle'){cfg[it.key]=!cfg[it.key];gSet('ti_'+it.key,cfg[it.key]);syncIslandClasses();}
+      else if(it.type==='link')window.open(it.url,'_blank');
+      close();
+    }
+    function close(){box.remove();}
+    inp.addEventListener('input',()=>render(inp.value.toLowerCase().trim()));
+    inp.addEventListener('keydown',e=>{
+      const items=res._items||[];
+      const els=[...res.querySelectorAll('.ti-pal-item')];
+      if(e.key==='ArrowDown'){e.preventDefault();hlIdx=Math.min(hlIdx+1,els.length-1);}
+      else if(e.key==='ArrowUp'){e.preventDefault();hlIdx=Math.max(hlIdx-1,0);}
+      else if(e.key==='Enter'){e.preventDefault();if(hlIdx>=0&&items[hlIdx])pick(items[hlIdx]);return;}
+      else if(e.key==='Escape'){close();return;}
+      els.forEach((el,i)=>el.classList.toggle('hl',i===hlIdx));
+    });
+    box.addEventListener('mousedown',e=>{if(e.target===box)close();});
+    render('');
+  }
+
   document.addEventListener('keydown',e=>{
-    if(e.altKey&&e.ctrlKey&&!e.shiftKey&&!e.metaKey){e.preventDefault();sb.classList.toggle('open')}
+    if(e.altKey&&e.ctrlKey&&!e.shiftKey&&!e.metaKey){
+      e.preventDefault();
+      if(e.key===' ')commandPalette();
+      else sb.classList.toggle('open');
+    }
     if(e.altKey&&!e.ctrlKey&&(e.key==='t'||e.key==='T')){
       e.preventDefault();cfg.showIsland=!cfg.showIsland;gSet('ti_showIsland',cfg.showIsland);
       syncIslandClasses();
@@ -1532,5 +1612,6 @@
   setInterval(fetchPrayer,3600000);
   setInterval(fetchWeather,1800000);
   setInterval(()=>{renderSC()},60000);
+  window.addEventListener('online',fetchWeather);
 
 })();
