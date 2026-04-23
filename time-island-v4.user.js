@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         🏝️ Time Island & Sidebar Widgets v4
 // @namespace    https://achma-learning.github.io/
-// @version      4.9.0
-// @description  Floating island with clock, dates (EN/Hijri), prayer countdown, live age + sidebar: prayer times (35 Moroccan cities), weather (redesigned journalist-style popup: today in detail + next 2 days concise, hourly strip, refresh), calendar, life-in-weeks grid, live age counter, stopwatch, notes, editable links. Auto-hide, section toggles, scale/font/blur/color presets, prayer glow. Alt+Ctrl=sidebar, Alt+T=island.
+// @version      4.7.3
+// @description  Floating island with clock, dates (EN/Hijri), prayer countdown, live age + sidebar: prayer times (35 Moroccan cities), weather, calendar, life-in-weeks grid, live age counter, stopwatch, notes, editable links. Auto-hide, section toggles, scale/font/blur/color presets, prayer glow. Alt+Ctrl=sidebar, Alt+T=island. Weather UI redesigned: widget (today detailed + tomorrow/after-tomorrow 2-col), popup (today detailed + 2 compact rows), dynamic island emoji with 🌧️❗ rain alert.
 // @author       Achma
 // @match        *://*/*
 // @grant        GM_addStyle
@@ -11,7 +11,6 @@
 // @grant        GM_xmlhttpRequest
 // @connect      api.aladhan.com
 // @connect      wttr.in
-// @connect      api.open-meteo.com
 // @run-at       document-end
 // @license      MIT
 // ==/UserScript==
@@ -55,7 +54,34 @@
   const EN_D=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   const EN_DS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   const AR_D=['الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
-  const WICON={'Sunny':'☀️','Clear':'☀️','Partly cloudy':'⛅','Partly Cloudy':'⛅','Cloudy':'☁️','Overcast':'☁️','Mist':'🌫️','Fog':'🌫️','Light rain':'🌧️','Rain':'🌧️','Heavy rain':'🌧️','Thunderstorm':'⛈️','Snow':'❄️','Patchy rain possible':'🌦️','Light drizzle':'🌦️'};
+  const WICON={
+    'Sunny':'☀️','Clear':'☀️',
+    'Partly cloudy':'⛅','Partly Cloudy':'⛅',
+    'Cloudy':'☁️','Overcast':'☁️',
+    'Mist':'🌫️','Fog':'🌫️','Freezing fog':'🌫️',
+    'Patchy rain possible':'🌦️','Patchy light rain':'🌦️','Patchy light drizzle':'🌦️','Light drizzle':'🌦️',
+    'Light rain':'🌧️','Rain':'🌧️','Moderate rain':'🌧️','Moderate rain at times':'🌧️',
+    'Heavy rain':'🌧️','Heavy rain at times':'🌧️',
+    'Light rain shower':'🌧️','Moderate or heavy rain shower':'🌧️','Torrential rain shower':'🌧️',
+    'Thunderstorm':'⛈️','Thundery outbreaks possible':'⛈️','Patchy light rain with thunder':'⛈️','Moderate or heavy rain with thunder':'⛈️',
+    'Snow':'❄️','Light snow':'🌨️','Moderate snow':'❄️','Heavy snow':'❄️',
+    'Patchy light snow':'🌨️','Patchy moderate snow':'❄️','Patchy heavy snow':'❄️',
+    'Light snow showers':'🌨️','Moderate or heavy snow showers':'❄️',
+    'Blowing snow':'🌬️❄️','Blizzard':'🌬️❄️',
+    'Sleet':'🌨️','Light sleet':'🌨️','Moderate or heavy sleet':'🌨️','Light sleet showers':'🌨️','Moderate or heavy sleet showers':'🌨️',
+    'Freezing drizzle':'🧊','Heavy freezing drizzle':'🧊',
+    'Light freezing rain':'🧊','Moderate or heavy freezing rain':'🧊',
+    'Ice pellets':'🧊','Light showers of ice pellets':'🧊','Moderate or heavy showers of ice pellets':'🧊'
+  };
+  function pickWeatherEmoji(desc){
+    if(!desc) return '🌤️';
+    const d=String(desc).toLowerCase();
+    if(d.includes('rain')||d.includes('drizzle')||d.includes('shower')) return '🌧️❗';
+    return WICON[desc]||'🌤️';
+  }
+  function pickWeatherEmojiPlain(desc){
+    return desc?(WICON[desc]||'🌤️'):'🌤️';
+  }
   // Wind arrow points the direction the wind is moving TO (opposite of "from")
   const WDIR={N:'↓',NNE:'↓',NE:'↙',ENE:'↙',E:'←',ESE:'←',SE:'↖',SSE:'↖',S:'↑',SSW:'↑',SW:'↗',WSW:'↗',W:'→',WNW:'→',NW:'↘',NNW:'↘'};
 
@@ -311,76 +337,40 @@
 .ti-pp-item.on .pp-name,.ti-pp-item.on .pp-time{color:#fff}
 .ti-pp-cd{text-align:center;margin-top:10px;padding-top:8px;border-top:1px solid var(--tib);font-family:var(--tim);font-size:13px;color:var(--tio);font-weight:600;direction:ltr;unicode-bidi:isolate}
 
-/* Weather popup — journalist-style briefing: today detailed, next 2 days concise */
-.ti-wp{padding:18px;min-width:440px;max-width:480px;max-height:min(78vh,680px);overflow-y:auto;border-color:rgba(59,130,246,.3);box-shadow:0 12px 40px rgba(0,0,0,.45),0 0 24px rgba(59,130,246,.12)}
-.ti-wp::-webkit-scrollbar{width:6px}
-.ti-wp::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:4px}
-
-/* Header: location + now + controls */
-.ti-wp-hdr{display:flex;justify-content:space-between;align-items:center;padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--tib);gap:12px}
+/* Weather popup (hover/click on island weather section) — 3-day forecast */
+.ti-wp{padding:14px;min-width:340px;max-width:400px;border-color:rgba(59,130,246,.3);box-shadow:0 8px 32px rgba(0,0,0,.4),0 0 20px rgba(59,130,246,.12)}
+.ti-wp-hdr{display:flex;justify-content:space-between;align-items:center;padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid var(--tib);gap:10px}
 .ti-wp-loc{flex:1;min-width:0}
-.ti-wp-city{font-size:15px;font-weight:700;color:var(--tit);display:flex;align-items:center;gap:5px}
-.ti-wp-now-desc{font-size:12.5px;color:var(--tid);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ti-wp-now{display:flex;align-items:center;gap:10px}
-.ti-wp-now-ico{font-size:34px;line-height:1}
-.ti-wp-now-temp{font-size:28px;font-weight:700;color:var(--tit);font-family:var(--tim);font-variant-numeric:tabular-nums;line-height:1}
-.ti-wp-now-temp .fl{font-size:11px;color:var(--tid);font-weight:500;margin-left:4px}
-.ti-wp-ctrls{display:flex;gap:4px;flex-direction:column}
-.ti-wp-btn{width:26px;height:26px;border-radius:8px;border:1px solid var(--tib);background:var(--tig);color:var(--tid);cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;transition:background .2s,color .2s,transform .15s;padding:0;line-height:1}
-.ti-wp-btn:hover{background:rgba(255,255,255,.1);color:var(--tit)}
-.ti-wp-btn:active{transform:scale(.92)}
-.ti-wp-btn.spin{animation:ti-wp-spin .8s linear infinite}
-@keyframes ti-wp-spin{to{transform:rotate(360deg)}}
-
-/* Today headline summary */
-.ti-wp-summary{font-size:12.5px;color:var(--tia);line-height:1.5;padding:10px 12px;background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.18);border-radius:10px;margin-bottom:12px}
-.ti-wp-summary b{color:var(--tit);font-weight:700}
-
-/* Meta row (humidity, wind, pressure, UV...) */
-.ti-wp-meta{font-size:12px;color:var(--tid);line-height:1.6;margin-bottom:14px;display:flex;flex-wrap:wrap;gap:4px 10px;font-family:var(--tif)}
-.ti-wp-meta .wd,.ti-wp-slot-wind .wd{color:var(--tia2);font-size:12px;line-height:1}
-
-/* Section titles */
-.ti-wp-section-title{font-size:10.5px;color:var(--tid);text-transform:uppercase;letter-spacing:1px;font-weight:600;margin-bottom:8px}
-
-/* Next hours strip */
-.ti-wp-hr{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-bottom:14px}
-.ti-wp-hr-it{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.05);border-radius:9px;padding:8px 4px;text-align:center;display:flex;flex-direction:column;gap:3px;align-items:center}
-.ti-wp-hr-hour{font-size:10px;color:var(--tid);font-weight:600;letter-spacing:.3px}
-.ti-wp-hr-ico{font-size:20px;line-height:1}
-.ti-wp-hr-temp{font-size:13px;font-weight:700;color:var(--tit);font-family:var(--tim);font-variant-numeric:tabular-nums}
-.ti-wp-hr-rain{font-size:9.5px;color:#60a5fa;font-family:var(--tim);font-variant-numeric:tabular-nums}
-
-/* Day cards */
-.ti-wp-day{margin-bottom:14px}
+.ti-wp-city{font-size:14px;font-weight:700;color:var(--tit);display:flex;align-items:center;gap:4px}
+.ti-wp-now-desc{font-size:11px;color:var(--tid);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ti-wp-now{display:flex;align-items:center;gap:8px}
+.ti-wp-now-ico{font-size:26px;line-height:1}
+.ti-wp-now-temp{font-size:22px;font-weight:700;color:var(--tit);font-family:var(--tim);font-variant-numeric:tabular-nums}
+.ti-wp-day{margin-bottom:10px}
 .ti-wp-day:last-child{margin-bottom:0}
-.ti-wp-day-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
-.ti-wp-day-name{font-size:13.5px;font-weight:700;color:var(--tia)}
-.ti-wp-day-date{font-size:11px;color:var(--tid);margin-left:8px;font-weight:500}
-.ti-wp-day-temps{font-size:13px;font-family:var(--tim);font-variant-numeric:tabular-nums}
+.ti-wp-day-hdr{display:flex;justify-content:space-between;align-items:baseline;padding-bottom:6px;margin-bottom:6px;border-bottom:1px dashed rgba(255,255,255,.06)}
+.ti-wp-day-name{font-size:12px;font-weight:700;color:var(--tia);text-transform:uppercase;letter-spacing:.5px}
+.ti-wp-day-date{font-size:10px;color:var(--tid);margin-left:6px}
+.ti-wp-day-temps{font-size:11px;font-family:var(--tim);font-variant-numeric:tabular-nums}
 .ti-wp-day-temps .hi{color:var(--tio);font-weight:700}
-.ti-wp-day-temps .lo{color:#60a5fa;font-weight:600;margin-left:6px}
-.ti-wp-day-bar{height:5px;border-radius:3px;background:rgba(255,255,255,.06);position:relative;margin:4px 0 8px;overflow:hidden}
-.ti-wp-day-bar-fill{position:absolute;top:0;bottom:0;border-radius:3px;background:linear-gradient(90deg,#60a5fa 0%,#fbbf24 55%,#f97316 100%)}
-.ti-wp-day-sub{font-size:11px;color:var(--tid);margin-bottom:8px;display:flex;flex-wrap:wrap;gap:3px 10px;font-family:var(--tif)}
-
-/* Slot cards (4 per day) */
-.ti-wp-slots{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
-.ti-wp-slot{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.05);border-radius:10px;padding:10px 6px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:3px}
-.ti-wp-slot-lbl{font-size:10px;color:var(--tid);text-transform:uppercase;letter-spacing:.5px;font-weight:600}
-.ti-wp-slot-ico{font-size:24px;line-height:1;margin:2px 0}
-.ti-wp-slot-temp{font-size:14px;font-weight:700;color:var(--tit);font-family:var(--tim);font-variant-numeric:tabular-nums;line-height:1.1}
-.ti-wp-slot-temp .fl{font-size:10px;color:var(--tid);font-weight:500;margin-left:3px;font-family:var(--tim)}
-.ti-wp-slot-desc{font-size:10.5px;color:var(--tid);line-height:1.25;height:26px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;width:100%;padding:0 2px}
-.ti-wp-slot-wind{font-size:10px;color:var(--tid);font-family:var(--tim);font-variant-numeric:tabular-nums;display:flex;align-items:center;justify-content:center;gap:2px;margin-top:1px}
-.ti-wp-slot-rain{font-size:10px;color:#60a5fa;font-family:var(--tim);margin-top:1px;font-variant-numeric:tabular-nums}
-
-/* Footer: source + last-updated */
-.ti-wp-src{margin-top:14px;padding-top:10px;border-top:1px solid var(--tib);font-size:10px;color:rgba(148,163,184,.6);font-family:var(--tim);display:flex;justify-content:space-between;align-items:center;letter-spacing:.5px}
-.ti-wp-src .src{text-transform:uppercase;letter-spacing:1px}
-
-@media (max-width:520px){.ti-wp{min-width:340px;max-width:94vw;padding:14px}.ti-wp-hr{grid-template-columns:repeat(3,1fr)}}
-@media (max-height:720px){.ti-wp{max-height:72vh}}
+.ti-wp-day-temps .lo{color:#60a5fa;font-weight:600;margin-left:4px}
+.ti-wp-slots{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
+.ti-wp-slot{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.05);border-radius:8px;padding:7px 4px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:2px}
+.ti-wp-slot-lbl{font-size:9px;color:var(--tid);text-transform:uppercase;letter-spacing:.4px;font-weight:600}
+.ti-wp-slot-ico{font-size:20px;line-height:1;margin:1px 0}
+.ti-wp-slot-temp{font-size:13px;font-weight:700;color:var(--tit);font-family:var(--tim);font-variant-numeric:tabular-nums;line-height:1.1}
+.ti-wp-slot-desc{font-size:9px;color:var(--tid);line-height:1.15;height:22px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;width:100%;padding:0 1px}
+.ti-wp-slot-wind{font-size:9px;color:var(--tid);font-family:var(--tim);font-variant-numeric:tabular-nums;display:flex;align-items:center;justify-content:center;gap:2px;margin-top:1px}
+.ti-wp-slot-wind .wd{color:var(--tia2);font-size:11px;line-height:1}
+.ti-wp-row{display:grid;grid-template-columns:78px 28px auto 1fr auto;gap:10px;align-items:center;padding:8px 4px;border-top:1px dashed rgba(255,255,255,.08);margin-top:8px}
+.ti-wp-row-day{font-size:12px;font-weight:700;color:var(--tia);text-transform:uppercase;letter-spacing:.5px}
+.ti-wp-row-date{font-size:10px;color:var(--tid);margin-top:1px}
+.ti-wp-row-ico{font-size:22px;line-height:1;text-align:center}
+.ti-wp-row-temps{font-size:12px;font-family:var(--tim);font-variant-numeric:tabular-nums;white-space:nowrap;display:flex;gap:6px}
+.ti-wp-row-temps .hi{color:var(--tio);font-weight:700}
+.ti-wp-row-temps .lo{color:#60a5fa;font-weight:600}
+.ti-wp-row-desc{font-size:11px;color:var(--tid);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.ti-wp-row-times{font-size:10px;color:var(--tid);display:flex;flex-direction:column;gap:2px;text-align:right;font-variant-numeric:tabular-nums}
 
 /* Sidebar */
 #ti-sb{position:fixed;top:0;right:0;width:320px;height:100vh;z-index:2147483645;background:var(--ti);backdrop-filter:blur(24px) saturate(1.8);border-left:1px solid var(--tib);box-shadow:-4px 0 32px rgba(0,0,0,.3);font-family:var(--tif);color:var(--tit);transform:translateX(100%);transition:transform .4s cubic-bezier(.16,1,.3,1);overflow-y:auto;overflow-x:hidden}
@@ -426,19 +416,29 @@
 
 /* Weather */
 .ti-ww{background:linear-gradient(135deg,#3b82f6,#06b6d4);border-radius:16px;padding:16px;color:#fff;margin:12px;box-shadow:0 4px 16px rgba(0,0,0,.2)}
-.ti-wwh{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
-.ti-wwc{font-size:14px;font-weight:600}
+.ti-wwc{font-size:13px;font-weight:700;opacity:.95}
 .ti-wwi{font-size:2rem}
-.ti-wwt{font-size:2.2rem;font-weight:700;line-height:1}
-.ti-wwd{font-size:12px;opacity:.85;margin-top:2px}
-.ti-wwg{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,.2)}
-.ti-wwgl{font-size:10px;opacity:.7;text-align:center}
-.ti-wwgv{font-size:13px;font-weight:600;text-align:center}
+.ti-wwd{font-size:12px;opacity:.9}
 .ti-wwld{padding:20px;text-align:center;color:rgba(255,255,255,.7);font-size:12px}
 .ti-ww-hr{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
 .ti-ww-ext{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.3);color:#fff;width:26px;height:26px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:13px;line-height:1;padding:0;transition:background .2s,transform .15s}
 .ti-ww-ext:hover{background:rgba(255,255,255,.3);transform:translateY(-1px)}
 .ti-ww-ext:active{transform:scale(.95)}
+.ti-ww-today{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center}
+.ti-ww-today-ico{font-size:2.6rem;line-height:1;text-align:center;min-width:48px}
+.ti-ww-today-main{min-width:0}
+.ti-ww-today-tempRow{display:flex;align-items:baseline;gap:8px;margin-top:3px;flex-wrap:wrap}
+.ti-ww-today-temp{font-size:1.7rem;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+.ti-ww-today-stats{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;opacity:.95;margin-top:8px}
+.ti-ww-today-stats span{white-space:nowrap}
+.ti-ww-next{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,.2)}
+.ti-ww-day{background:rgba(255,255,255,.1);border-radius:10px;padding:8px 6px;text-align:center;display:flex;flex-direction:column;gap:3px;align-items:center}
+.ti-ww-day-lbl{font-size:9px;opacity:.75;letter-spacing:.6px;font-weight:700}
+.ti-ww-day-ico{font-size:1.7rem;line-height:1}
+.ti-ww-day-temps{font-size:12px;font-variant-numeric:tabular-nums;display:flex;justify-content:center;gap:6px}
+.ti-ww-day-temps .hi{font-weight:700}
+.ti-ww-day-temps .lo{opacity:.75}
+.ti-ww-day-desc{font-size:10px;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 
 /* Sidebar calendar */
 .ti-scg{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;text-align:center}
@@ -758,14 +758,14 @@
       </div>
     </div>
 
-    <div class="ti-foot">🏝️ Time Island v4.8.0</div>`;
+    <div class="ti-foot">🏝️ Time Island v4.7.1</div>`;
   document.body.appendChild(sb);
 
   // ═══════════════════════════════════════════
   //  §5  CACHE DOM REFS
   // ═══════════════════════════════════════════
   const $=k=>document.getElementById(k);
-  const R={clk:$('ti-clk'),en:$('ti-en'),ar:$('ti-ar'),np:$('ti-np'),phj:$('ti-phj'),pgr:$('ti-pgr'),pg:$('ti-pg'),pcd:$('ti-pcd'),sc:$('ti-sc'),dig:$('ti-dig'),sw:$('ti-sw'),notes:$('ti-notes'),ww:$('ti-ww'),ci:$('ti-ci'),cd:$('ti-cd'),age:$('ti-age'),habous:$('ti-habous-btn'),wth:$('ti-wth'),wthIco:$('ti-wth-ico')};
+  const R={clk:$('ti-clk'),en:$('ti-en'),ar:$('ti-ar'),np:$('ti-np'),phj:$('ti-phj'),pgr:$('ti-pgr'),pg:$('ti-pg'),pcd:$('ti-pcd'),sc:$('ti-sc'),dig:$('ti-dig'),sw:$('ti-sw'),notes:$('ti-notes'),ww:$('ti-ww'),ci:$('ti-ci'),cd:$('ti-cd'),age:$('ti-age'),habous:$('ti-habous-btn'),wth:$('ti-wth')};
 
   /** Update Habous monthly link to match the selected city (#14) */
   function syncHabousLink(){
@@ -891,382 +891,179 @@
   }
 
   // ═══════════════════════════════════════════
-  //  §9  WEATHER (wttr.in primary, Open-Meteo fallback)
+  //  §9  WEATHER (wttr.in, synced with city)
   // ═══════════════════════════════════════════
   function weatherUrl(){return `https://wttr.in/${encodeURIComponent(getCity()[3])}`}
 
-  // Time slots: wttr.in website aggregates hourly into Morning/Noon/Evening/Night.
-  // In J1, hourly[] has 8 entries (every 3h): idx 0=00, 1=03, 2=06, 3=09, 4=12,
-  // 5=15, 6=18, 7=21. wttr.in "Matin" matches idx 3 (09:00), not 2 (06:00).
-  const WTH_SLOTS=[{lbl:'Morning',idx:3,hour:9},{lbl:'Afternoon',idx:4,hour:12},{lbl:'Evening',idx:6,hour:18},{lbl:'Night',idx:7,hour:21}];
-
-  // WMO weather codes (Open-Meteo) → [desc, icon]
-  const WMO={
-    0:['Clear','☀️'],1:['Mainly clear','🌤️'],2:['Partly cloudy','⛅'],3:['Overcast','☁️'],
-    45:['Fog','🌫️'],48:['Rime fog','🌫️'],
-    51:['Light drizzle','🌦️'],53:['Drizzle','🌦️'],55:['Heavy drizzle','🌦️'],
-    56:['Freezing drizzle','🌧️'],57:['Freezing drizzle','🌧️'],
-    61:['Light rain','🌧️'],63:['Rain','🌧️'],65:['Heavy rain','🌧️'],
-    66:['Freezing rain','🌧️'],67:['Freezing rain','🌧️'],
-    71:['Light snow','❄️'],73:['Snow','❄️'],75:['Heavy snow','❄️'],77:['Snow grains','❄️'],
-    80:['Rain showers','🌦️'],81:['Rain showers','🌧️'],82:['Heavy showers','🌧️'],
-    85:['Snow showers','❄️'],86:['Heavy snow showers','❄️'],
-    95:['Thunderstorm','⛈️'],96:['Thunderstorm (hail)','⛈️'],99:['Heavy thunderstorm','⛈️'],
-  };
-  function wmoOf(code){return WMO[code]||['N/A','🌤️']}
-  // Wind arrow = direction wind is moving TO (180° opposite of "from")
-  function degToArrow(deg){
-    if(deg==null||isNaN(+deg))return '·';
-    const d=((+deg)+180)%360;
-    return ['↑','↗','→','↘','↓','↙','←','↖'][Math.round(d/45)%8];
+  function dayLabel(di,dateObj){
+    return di===0?'Today':di===1?'Tomorrow':EN_D[dateObj.getDay()];
   }
-  function degTo16(deg){
-    if(deg==null||isNaN(+deg))return '';
-    return ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'][Math.round(((+deg)%360)/22.5)%16];
+  function dayShortDesc(day){
+    return day?.hourly?.[4]?.weatherDesc?.[0]?.value || day?.hourly?.[2]?.weatherDesc?.[0]?.value || '';
   }
-  function hhmm(iso){ // "2026-04-19T06:32" → "06:32"
-    if(!iso)return '';
-    const t=iso.split('T')[1]||iso;
-    return t.slice(0,5);
-  }
-
-  // ── Normalizers — both sources return the same internal shape ──
-  // Build 6-tile "Next Hours" strip from wttr.in hourly arrays (3h granularity).
-  // Starts from the first slot >= current hour today; pads from tomorrow if short.
-  function hourlyFromWttr(days){
-    const now=new Date(),nowH=now.getHours();
-    const out=[];
-    const push=(hr,hour)=>{
-      if(!hr)return;
-      const hDesc=hr.weatherDesc?.[0]?.value||'N/A';
-      out.push({
-        hour,temp:+hr.tempC,feels:+hr.FeelsLikeC,desc:hDesc,icon:WICON[hDesc]||'🌤️',
-        chanceRain:+(hr.chanceofrain||0),windKmph:+hr.windspeedKmph,
-        windArrow:WDIR[hr.winddir16Point]||'·',
-      });
-    };
-    const today=days[0]?.hourly||[];
-    for(let i=0;i<today.length&&out.length<6;i++){
-      const h=+((today[i].time||'0').padStart(4,'0')).slice(0,2);
-      if(h>=nowH)push(today[i],h);
-    }
-    if(out.length<6){
-      const tmr=days[1]?.hourly||[];
-      for(let i=0;i<tmr.length&&out.length<6;i++){
-        const h=+((tmr[i].time||'0').padStart(4,'0')).slice(0,2);
-        push(tmr[i],h);
-      }
-    }
-    return out;
-  }
-
-  function hourlyFromOpenMeteo(H){
-    if(!H||!H.time)return [];
-    const now=new Date();
-    const nowISO=now.toISOString().slice(0,13); // YYYY-MM-DDTHH
-    let start=H.time.findIndex(t=>t>=nowISO);
-    if(start<0)start=0;
-    const out=[];
-    for(let i=start;i<H.time.length&&out.length<6;i++){
-      const [hDesc,hIcon]=wmoOf(H.weather_code?.[i]);
-      const wdeg=H.wind_direction_10m?.[i];
-      out.push({
-        hour:+H.time[i].slice(11,13),
-        temp:Math.round(+H.temperature_2m?.[i]),feels:Math.round(+H.apparent_temperature?.[i]),
-        desc:hDesc,icon:hIcon,chanceRain:+(H.precipitation_probability?.[i]||0),
-        windKmph:Math.round(+H.wind_speed_10m?.[i]),windArrow:degToArrow(wdeg),
-      });
-    }
-    return out;
-  }
-
-  function normalizeWttr(d,c){
-    const cur=d.current_condition?.[0];if(!cur)throw 0;
-    const desc=cur.weatherDesc?.[0]?.value||'N/A';
-    const weatherArr=Array.isArray(d.weather)?d.weather:[];
-    const forecast=weatherArr.slice(0,3).map(day=>{
-      const astro=day.astronomy?.[0]||{};
-      const slots=WTH_SLOTS.map(s=>{
-        const hr=day.hourly?.[s.idx];
-        if(!hr)return null;
-        const hDesc=hr.weatherDesc?.[0]?.value||'N/A';
-        return{
-          label:s.lbl,temp:+hr.tempC,feels:+hr.FeelsLikeC,desc:hDesc,icon:WICON[hDesc]||'🌤️',
-          windKmph:+hr.windspeedKmph,windDir:hr.winddir16Point||'',windArrow:WDIR[hr.winddir16Point]||'·',
-          chanceRain:+(hr.chanceofrain||0),precipMM:+(hr.precipMM||0),humidity:+hr.humidity,
-        };
-      });
-      // Collect chance-of-rain daily max across hourly
-      const chanceMax=(day.hourly||[]).reduce((m,h)=>Math.max(m,+(h.chanceofrain||0)),0);
-      return{
-        date:day.date,maxTemp:+day.maxtempC,minTemp:+day.mintempC,avgTemp:+day.avgtempC,
-        sunrise:astro.sunrise||'',sunset:astro.sunset||'',moonPhase:astro.moon_phase||'',
-        moonIllum:astro.moon_illumination||'',uvIndex:+day.uvIndex||0,chanceRainMax:chanceMax,
-        sunHour:+day.sunHour||0,slots,
-      };
-    });
-    return{
-      source:'wttr.in',
-      temp:+cur.temp_C,feels:+cur.FeelsLikeC,desc,icon:WICON[desc]||'🌤️',
-      humidity:+cur.humidity,wind:+cur.windspeedKmph,windDir:cur.winddir16Point||'',
-      windArrow:WDIR[cur.winddir16Point]||'·',pressure:+cur.pressure,visibility:+cur.visibility,
-      cloudCover:+cur.cloudcover,uvIndex:+cur.uvIndex,precipMM:+cur.precipMM,
-      cityAr:c[1],cityFr:c[2],cityEn:c[3],forecast,
-      hourly:hourlyFromWttr(weatherArr),
-    };
-  }
-
-  function normalizeOpenMeteo(d,c){
-    const cur=d.current;if(!cur)throw 0;
-    const[desc,icon]=wmoOf(cur.weather_code);
-    const H=d.hourly||{};const D=d.daily||{};
-    const forecast=[];
-    const dayCount=Math.min(3,(D.time||[]).length);
-    for(let di=0;di<dayCount;di++){
-      const[dDesc,dIcon]=wmoOf(D.weather_code?.[di]);
-      const slots=WTH_SLOTS.map(s=>{
-        const hi=di*24+s.hour;
-        if(!H.time||hi>=H.time.length)return null;
-        const[hDesc,hIcon]=wmoOf(H.weather_code?.[hi]);
-        const wdeg=H.wind_direction_10m?.[hi];
-        return{
-          label:s.lbl,temp:Math.round(+H.temperature_2m?.[hi]),feels:Math.round(+H.apparent_temperature?.[hi]),
-          desc:hDesc,icon:hIcon,windKmph:Math.round(+H.wind_speed_10m?.[hi]),
-          windDir:degTo16(wdeg),windArrow:degToArrow(wdeg),
-          chanceRain:+(H.precipitation_probability?.[hi]||0),
-          precipMM:+(H.precipitation?.[hi]||0),humidity:+H.relative_humidity_2m?.[hi],
-        };
-      });
-      forecast.push({
-        date:D.time[di],maxTemp:Math.round(+D.temperature_2m_max?.[di]),
-        minTemp:Math.round(+D.temperature_2m_min?.[di]),avgTemp:null,
-        sunrise:hhmm(D.sunrise?.[di]),sunset:hhmm(D.sunset?.[di]),
-        moonPhase:'',moonIllum:'',uvIndex:+(D.uv_index_max?.[di]||0),
-        chanceRainMax:+(D.precipitation_probability_max?.[di]||0),sunHour:0,
-        desc:dDesc,icon:dIcon,slots,
-      });
-    }
-    const wdeg=cur.wind_direction_10m;
-    return{
-      source:'open-meteo',
-      temp:Math.round(+cur.temperature_2m),feels:Math.round(+cur.apparent_temperature),desc,icon,
-      humidity:+cur.relative_humidity_2m,wind:Math.round(+cur.wind_speed_10m),windDir:degTo16(wdeg),
-      windArrow:degToArrow(wdeg),pressure:Math.round(+cur.pressure_msl),
-      visibility:null,cloudCover:+cur.cloud_cover,uvIndex:null,precipMM:+(cur.precipitation||0),
-      cityAr:c[1],cityFr:c[2],cityEn:c[3],forecast,
-      hourly:hourlyFromOpenMeteo(H),
-    };
-  }
-
   function renderWeatherCard(){
     if(!weatherData)return '<div class="ti-wwld">Weather unavailable</div>';
     const w=weatherData;
+    const todayIco=pickWeatherEmoji(w.desc);
+    const nextDays=(w.forecast||[]).slice(1,3);
+    const nextLabels=['TOMORROW','AFTER TOMORROW'];
+    let nextHtml='';
+    for(let i=0;i<2;i++){
+      const day=nextDays[i];
+      if(!day){
+        nextHtml+=`<div class="ti-ww-day"><div class="ti-ww-day-lbl">${nextLabels[i]}</div><div class="ti-ww-day-ico">🌤️</div><div class="ti-ww-day-desc">—</div></div>`;
+        continue;
+      }
+      const desc=dayShortDesc(day);
+      const ico=pickWeatherEmojiPlain(desc);
+      nextHtml+=`<div class="ti-ww-day">
+        <div class="ti-ww-day-lbl">${nextLabels[i]}</div>
+        <div class="ti-ww-day-ico">${ico}</div>
+        <div class="ti-ww-day-temps"><span class="hi">▲ ${escHtml(day.maxtempC)}°</span><span class="lo">▼ ${escHtml(day.mintempC)}°</span></div>
+        <div class="ti-ww-day-desc" title="${escHtml(desc)}">${escHtml(desc||'—')}</div>
+      </div>`;
+    }
     return `
-      <div class="ti-wwh">
-        <div><div class="ti-wwc">${escHtml(w.cityEn)}</div><div class="ti-wwt">${escHtml(w.temp)}°C</div><div class="ti-wwd">${escHtml(w.desc)}</div></div>
+      <div class="ti-ww-today">
+        <div class="ti-ww-today-ico">${todayIco}</div>
+        <div class="ti-ww-today-main">
+          <div class="ti-wwc">${escHtml(w.cityEn)}</div>
+          <div class="ti-ww-today-tempRow">
+            <span class="ti-ww-today-temp">${escHtml(w.temp)}°C</span>
+            <span class="ti-wwd">${escHtml(w.desc)}</span>
+          </div>
+          <div class="ti-ww-today-stats">
+            <span>💧 ${escHtml(w.humidity)}%</span>
+            <span>💨 ${escHtml(w.wind)} km/h</span>
+            <span>🌡️ ${escHtml(w.feels)}°C</span>
+          </div>
+        </div>
         <div class="ti-ww-hr">
           <button class="ti-ww-ext" title="Open weather in new tab" aria-label="Open weather in new tab">↗</button>
-          <div class="ti-wwi">${w.icon}</div>
         </div>
       </div>
-      <div class="ti-wwg"><div><div class="ti-wwgl">Humidity</div><div class="ti-wwgv">${escHtml(w.humidity)}%</div></div><div><div class="ti-wwgl">Wind</div><div class="ti-wwgv">${escHtml(w.wind)} km/h</div></div><div><div class="ti-wwgl">Feels</div><div class="ti-wwgv">${escHtml(w.feels)}°C</div></div></div>`;
+      <div class="ti-ww-next">${nextHtml}</div>`;
   }
 
   function wireWeatherExt(container){
-    container.querySelectorAll('.ti-ww-ext,.ti-wp-ext').forEach(btn=>{
-      btn.addEventListener('click',e=>{
-        e.stopPropagation();
-        window.open(weatherUrl(),'_blank','noopener,noreferrer');
-      });
-    });
-    container.querySelectorAll('.ti-wp-refresh').forEach(btn=>{
-      btn.addEventListener('click',e=>{
-        e.stopPropagation();
-        if(btn.classList.contains('spin'))return;
-        btn.classList.add('spin');
-        fetchWeather();
-        setTimeout(()=>btn.classList.remove('spin'),3000);
-      });
+    const btn=container.querySelector('.ti-ww-ext');
+    if(!btn)return;
+    btn.addEventListener('click',e=>{
+      e.stopPropagation();
+      window.open(weatherUrl(),'_blank','noopener,noreferrer');
     });
   }
 
   function updIslandWeather(){
-    if(!weatherData){R.wth.textContent='--';return}
-    if(R.wthIco&&weatherData.icon)R.wthIco.textContent=weatherData.icon;
+    const icoEl=document.getElementById('ti-wth-ico');
+    if(!weatherData){R.wth.textContent='--';if(icoEl)icoEl.textContent='🌤️';return}
+    if(icoEl)icoEl.textContent=pickWeatherEmoji(weatherData.desc);
     R.wth.textContent=`${weatherData.temp}°C`;
   }
 
-  // Craft a "journalist" headline from today's forecast: temps + rain/wind highlights.
-  function todaySummary(day){
-    if(!day)return '';
-    const parts=[];
-    const desc=day.slots?.find(s=>s&&s.desc)?.desc||day.desc||'';
-    parts.push(`<b>Today:</b> ${escHtml(desc||'—')}, high <b>${day.maxTemp}°</b> · low <b>${day.minTemp}°</b>.`);
-    const slots=day.slots||[];
-    const rainSlot=slots.find(s=>s&&s.chanceRain>=50);
-    if(rainSlot)parts.push(`Rain likely in the <b>${rainSlot.label.toLowerCase()}</b> (${rainSlot.chanceRain}%).`);
-    else if(day.chanceRainMax>=30)parts.push(`Slight chance of rain (${day.chanceRainMax}%).`);
-    const windy=slots.find(s=>s&&s.windKmph>=30);
-    if(windy)parts.push(`Windy around <b>${windy.windKmph} km/h</b>.`);
-    if(day.uvIndex>=7)parts.push(`High UV index <b>${day.uvIndex}</b> — sun protection recommended.`);
-    return parts.join(' ');
-  }
+  // 4 time slots from wttr.in J1 hourly[] (8 entries every 3h: idx 0=00,2=06,4=12,6=18,7=21)
+  const WTH_SLOTS=[{lbl:'Morning',idx:2},{lbl:'Afternoon',idx:4},{lbl:'Evening',idx:6},{lbl:'Night',idx:7}];
 
   function renderWthPop(){
     if(!weatherData){
-      wthPop.innerHTML='<div style="padding:16px;text-align:center;color:var(--tid);font-size:12px">Loading weather…</div>';
+      wthPop.innerHTML='<div style="padding:8px;text-align:center;color:var(--tid);font-size:12px">Loading weather...</div>';
       return;
     }
     const w=weatherData;
-    const curMeta=[];
-    curMeta.push(`💧 ${w.humidity}%`);
-    curMeta.push(`💨 ${w.wind} km/h <span class="wd">${w.windArrow}</span>${w.windDir?' '+escHtml(w.windDir):''}`);
-    if(w.pressure)curMeta.push(`🌡️ ${w.pressure} hPa`);
-    if(w.cloudCover!=null&&!isNaN(w.cloudCover))curMeta.push(`☁️ ${w.cloudCover}%`);
-    if(w.visibility!=null&&!isNaN(w.visibility)&&w.visibility>0)curMeta.push(`👁️ ${w.visibility} km`);
-    if(w.uvIndex!=null&&!isNaN(w.uvIndex)&&w.uvIndex>0)curMeta.push(`☀️ UV ${w.uvIndex}`);
-    if(w.precipMM>0)curMeta.push(`🌧️ ${w.precipMM} mm`);
-    const feelsTxt=(!isNaN(w.feels)&&w.feels!==w.temp)?` <span class="fl">(feels ${w.feels}°)</span>`:'';
-
-    // Header — location, now, controls (refresh + open-in-tab stacked vertically to save width)
     let h=`<div class="ti-wp-hdr">
       <div class="ti-wp-loc">
         <div class="ti-wp-city">📍 ${escHtml(w.cityEn)}</div>
-        <div class="ti-wp-now-desc">${escHtml(w.desc)}</div>
+        <div class="ti-wp-now-desc">${escHtml(w.desc)} · Feels ${escHtml(w.feels)}° · 💧${escHtml(w.humidity)}%</div>
       </div>
       <div class="ti-wp-now">
         <div class="ti-wp-now-ico">${w.icon}</div>
-        <div class="ti-wp-now-temp">${escHtml(w.temp)}°${feelsTxt}</div>
-        <div class="ti-wp-ctrls">
-          <button class="ti-wp-btn ti-wp-refresh" title="Refresh weather" aria-label="Refresh weather">♻</button>
-          <button class="ti-wp-btn ti-wp-ext" title="Open weather in new tab" aria-label="Open weather in new tab">↗</button>
-        </div>
+        <div class="ti-wp-now-temp">${escHtml(w.temp)}°</div>
+        <button class="ti-ww-ext" title="Open weather in new tab" aria-label="Open weather in new tab">↗</button>
       </div>
     </div>`;
 
-    // Today's journalist-style headline
     const days=(w.forecast||[]).slice(0,3);
-    const summary=todaySummary(days[0]);
-    if(summary)h+=`<div class="ti-wp-summary">${summary}</div>`;
-
-    // Current meta chips
-    h+=`<div class="ti-wp-meta">${curMeta.join(' · ')}</div>`;
-
-    // Next hours strip (today, 3h cadence via wttr or hourly via open-meteo)
-    const hourly=(w.hourly||[]).slice(0,6);
-    if(hourly.length){
-      h+='<div class="ti-wp-section-title">Next Hours</div><div class="ti-wp-hr">';
-      hourly.forEach(hr=>{
-        const hh=String(hr.hour).padStart(2,'0');
-        h+=`<div class="ti-wp-hr-it" title="${escHtml(hr.desc)}">
-          <div class="ti-wp-hr-hour">${hh}h</div>
-          <div class="ti-wp-hr-ico">${hr.icon}</div>
-          <div class="ti-wp-hr-temp">${hr.temp}°</div>
-          ${hr.chanceRain>0?`<div class="ti-wp-hr-rain">🌧️ ${hr.chanceRain}%</div>`:''}
-        </div>`;
-      });
-      h+='</div>';
-    }
-
     if(!days.length){
       h+='<div style="padding:8px;text-align:center;color:var(--tid);font-size:12px">Forecast unavailable</div>';
     }else{
-      // Week min/max for gradient bars
-      const weekMin=Math.min(...days.map(d=>d.minTemp));
-      const weekMax=Math.max(...days.map(d=>d.maxTemp));
-      const span=Math.max(1,weekMax-weekMin);
-
-      days.forEach((day,di)=>{
-        const dateObj=new Date(day.date+'T00:00:00');
-        const dayName=di===0?'Today':di===1?'Tomorrow':EN_D[dateObj.getDay()];
-        const dateStr=`${EN_DS[dateObj.getDay()]} · ${EN_M[dateObj.getMonth()]} ${dateObj.getDate()}`;
-        const sub=[];
-        if(day.sunrise)sub.push(`🌅 ${escHtml(day.sunrise)}`);
-        if(day.sunset)sub.push(`🌇 ${escHtml(day.sunset)}`);
-        if(day.uvIndex>0)sub.push(`UV ${day.uvIndex}`);
-        if(day.chanceRainMax>0)sub.push(`🌧️ ${day.chanceRainMax}%`);
-        if(day.moonPhase)sub.push(`🌙 ${escHtml(day.moonPhase)}${day.moonIllum?' '+escHtml(day.moonIllum)+'%':''}`);
-
-        // Gradient bar position: left/right % clipped to [0,100]
-        const leftPct=Math.max(0,Math.min(100,((day.minTemp-weekMin)/span)*100));
-        const rightPct=Math.max(0,Math.min(100,((weekMax-day.maxTemp)/span)*100));
-
-        if(di===0){
-          h+=`<div class="ti-wp-section-title" style="margin-top:4px">Today · Morning · Afternoon · Evening · Night</div>`;
-        }
-        h+=`<div class="ti-wp-day">
-          <div class="ti-wp-day-hdr">
-            <div><span class="ti-wp-day-name">${dayName}</span><span class="ti-wp-day-date">${dateStr}</span></div>
-            <div class="ti-wp-day-temps"><span class="hi">▲ ${day.maxTemp}°</span><span class="lo">▼ ${day.minTemp}°</span></div>
-          </div>
-          <div class="ti-wp-day-bar"><div class="ti-wp-day-bar-fill" style="left:${leftPct.toFixed(1)}%;right:${rightPct.toFixed(1)}%"></div></div>`;
-        if(sub.length)h+=`<div class="ti-wp-day-sub">${sub.join(' · ')}</div>`;
-        h+='<div class="ti-wp-slots">';
-        day.slots.forEach(sl=>{
-          if(!sl){h+='<div class="ti-wp-slot"></div>';return}
-          const feels=(!isNaN(sl.feels)&&sl.feels!==sl.temp)?`<span class="fl">(${sl.feels}°)</span>`:'';
-          h+=`<div class="ti-wp-slot">
-            <div class="ti-wp-slot-lbl">${escHtml(sl.label)}</div>
-            <div class="ti-wp-slot-ico">${sl.icon}</div>
-            <div class="ti-wp-slot-temp">${sl.temp}°${feels}</div>
-            <div class="ti-wp-slot-desc" title="${escHtml(sl.desc)}">${escHtml(sl.desc)}</div>
-            <div class="ti-wp-slot-wind"><span class="wd">${sl.windArrow}</span> ${sl.windKmph} km/h</div>
-            ${sl.chanceRain>0?`<div class="ti-wp-slot-rain">🌧️ ${sl.chanceRain}%</div>`:''}
-          </div>`;
-        });
-        h+='</div></div>';
+      // Today: detailed 4-slot block
+      const today=days[0];
+      const tObj=new Date(today.date+'T00:00:00');
+      const tDateStr=`${EN_DS[tObj.getDay()]} · ${EN_M[tObj.getMonth()]} ${tObj.getDate()}`;
+      h+=`<div class="ti-wp-day">
+        <div class="ti-wp-day-hdr">
+          <div><span class="ti-wp-day-name">Today</span><span class="ti-wp-day-date">${tDateStr}</span></div>
+          <div class="ti-wp-day-temps"><span class="hi">▲ ${escHtml(today.maxtempC)}°</span><span class="lo">▼ ${escHtml(today.mintempC)}°</span></div>
+        </div>
+        <div class="ti-wp-slots">`;
+      WTH_SLOTS.forEach(s=>{
+        const hr=today.hourly&&today.hourly[s.idx];
+        if(!hr){h+='<div class="ti-wp-slot"></div>';return}
+        const desc=hr.weatherDesc?.[0]?.value||'N/A';
+        const ico=pickWeatherEmojiPlain(desc);
+        const arr=WDIR[hr.winddir16Point]||'·';
+        h+=`<div class="ti-wp-slot">
+          <div class="ti-wp-slot-lbl">${s.lbl}</div>
+          <div class="ti-wp-slot-ico">${ico}</div>
+          <div class="ti-wp-slot-temp">${escHtml(hr.tempC)}°</div>
+          <div class="ti-wp-slot-desc" title="${escHtml(desc)}">${escHtml(desc)}</div>
+          <div class="ti-wp-slot-wind"><span class="wd">${arr}</span> ${escHtml(hr.windspeedKmph)} km/h</div>
+        </div>`;
       });
-    }
+      h+='</div></div>';
 
-    // Footer: source + last-updated
-    const updStr=w.fetchedAt?new Date(w.fetchedAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'—';
-    h+=`<div class="ti-wp-src"><span class="src">source: ${escHtml(w.source)}</span><span>updated ${escHtml(updStr)}</span></div>`;
+      // Tomorrow + After-tomorrow: compact rows
+      for(let di=1;di<days.length;di++){
+        const day=days[di];
+        const dObj=new Date(day.date+'T00:00:00');
+        const dayName=di===1?'TOMORROW':EN_D[dObj.getDay()].toUpperCase();
+        const dateStr=`${EN_DS[dObj.getDay()]} · ${EN_M[dObj.getMonth()]} ${dObj.getDate()}`;
+        const desc=dayShortDesc(day)||'N/A';
+        const ico=pickWeatherEmojiPlain(desc);
+        const morning=day.hourly?.[2];
+        const evening=day.hourly?.[6];
+        h+=`<div class="ti-wp-row">
+          <div class="ti-wp-row-when">
+            <div class="ti-wp-row-day">${dayName}</div>
+            <div class="ti-wp-row-date">${dateStr}</div>
+          </div>
+          <div class="ti-wp-row-ico">${ico}</div>
+          <div class="ti-wp-row-temps"><span class="hi">▲ ${escHtml(day.maxtempC)}°</span><span class="lo">▼ ${escHtml(day.mintempC)}°</span></div>
+          <div class="ti-wp-row-desc" title="${escHtml(desc)}">${escHtml(desc)}</div>
+          <div class="ti-wp-row-times">
+            <span>🌅 ${morning?escHtml(morning.tempC)+'°':'—'}</span>
+            <span>🌇 ${evening?escHtml(evening.tempC)+'°':'—'}</span>
+          </div>
+        </div>`;
+      }
+    }
     wthPop.innerHTML=h;
     wireWeatherExt(wthPop);
   }
 
-  function applyWeather(){
-    R.ww.innerHTML=renderWeatherCard();
-    wireWeatherExt(R.ww);
-    updIslandWeather();
-    if(wthPop.classList.contains('show'))renderWthPop();
-  }
-  function failWeather(){
-    weatherData=null;
-    R.ww.innerHTML='<div class="ti-wwld">Weather unavailable</div>';
-    updIslandWeather();
-    if(wthPop.classList.contains('show'))renderWthPop();
-  }
-
-  // Primary: wttr.in J1. Fallback: Open-Meteo (free, no key).
   function fetchWeather(){
-    const c=getCity();
-    R.ww.innerHTML='<div class="ti-wwld">Loading weather…</div>';
-    const city=c[3].replace(/\s+/g,'+');
-    GM_xmlhttpRequest({method:'GET',url:`https://wttr.in/${city}?format=j1`,timeout:8000,
-      onload(r){
-        try{const d=JSON.parse(r.responseText);weatherData=normalizeWttr(d,c);weatherData.fetchedAt=Date.now();applyWeather();}
-        catch{fetchWeatherFallback(c);}
-      },
-      onerror(){fetchWeatherFallback(c);},
-      ontimeout(){fetchWeatherFallback(c);},
-    });
-  }
-
-  function fetchWeatherFallback(c){
-    const url=`https://api.open-meteo.com/v1/forecast?latitude=${c[4]}&longitude=${c[5]}`
-      +`&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,wind_direction_10m,pressure_msl,precipitation,cloud_cover`
-      +`&hourly=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,relative_humidity_2m,precipitation_probability,precipitation`
-      +`&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset,weather_code,uv_index_max,precipitation_sum,precipitation_probability_max`
-      +`&timezone=auto&forecast_days=3&wind_speed_unit=kmh`;
-    GM_xmlhttpRequest({method:'GET',url,timeout:8000,
-      onload(r){
-        try{const d=JSON.parse(r.responseText);weatherData=normalizeOpenMeteo(d,c);weatherData.fetchedAt=Date.now();applyWeather();}
-        catch{failWeather();}
-      },
-      onerror(){failWeather();},
-      ontimeout(){failWeather();},
-    });
+    const c=getCity();const city=c[3].replace(/\s+/g,'+');
+    R.ww.innerHTML='<div class="ti-wwld">Loading weather...</div>';
+    GM_xmlhttpRequest({method:'GET',url:`https://wttr.in/${city}?format=j1`,onload(r){
+      try{
+        const d=JSON.parse(r.responseText);const cur=d.current_condition[0];
+        const desc=cur.weatherDesc?.[0]?.value||'N/A';
+        const ico=pickWeatherEmoji(desc);
+        weatherData={temp:cur.temp_C,desc,icon:ico,humidity:cur.humidity,wind:cur.windspeedKmph,feels:cur.FeelsLikeC,cityAr:c[1],cityFr:c[2],cityEn:c[3],forecast:Array.isArray(d.weather)?d.weather:[]};
+        R.ww.innerHTML=renderWeatherCard();
+        wireWeatherExt(R.ww);
+        updIslandWeather();
+        if(wthPop.classList.contains('show'))renderWthPop();
+      }catch{
+        weatherData=null;
+        R.ww.innerHTML='<div class="ti-wwld">Weather unavailable</div>';
+        updIslandWeather();
+      }
+    },onerror(){
+      weatherData=null;
+      R.ww.innerHTML='<div class="ti-wwld">Weather unavailable</div>';
+      updIslandWeather();
+    }});
   }
 
   // ═══════════════════════════════════════════
@@ -1380,8 +1177,6 @@
   }
   // Close popups on outside click (click mode)
   document.addEventListener('click',()=>{if(cfg.clickPopups)closeAllPopups()});
-  // Escape always closes any open popup
-  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeAllPopups()});
 
   hoverSetup('ti-s-en',calPop,()=>{initCal();renderCalPop()},false);
   hoverSetup('ti-s-ar',hijPop,renderHijPop,true);
