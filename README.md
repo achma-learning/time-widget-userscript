@@ -1,7 +1,17 @@
 # time-widget-userscript
-# 🏝️ Time Island — Userscript v4.7.4
+# 🏝️ Time Island — Userscript v4.7.5
 
 > A floating island widget + sidebar dashboard for every website. Prayer times, weather, calendar, life tracker, and more — designed for Moroccan users with full Arabic/RTL support.
+
+---
+
+## ✨ What's New in v4.7.5
+
+### 🔋 Battery-Friendly Tick
+The main clock loop replaced `requestAnimationFrame` with a 1-second `setInterval` and pauses entirely when the tab is hidden (`visibilitychange`). The clock catches up immediately when you return to the tab. Same visual behavior, far less CPU on laptops.
+
+### 🎨 Canvas Life Grid
+The "Your Life in Weeks" grid now renders to a single `<canvas>` instead of thousands of DOM elements (52 × lifeExpect). Memory and layout cost drop dramatically, especially at higher life expectancies.
 
 ---
 
@@ -144,7 +154,7 @@ Toggle with **Alt+Ctrl** or the close button.
 
 - **APIs**: AlAdhan (prayer times, method=21), wttr.in (weather), Google Fonts (on-demand)
 - **Storage**: `GM_getValue` / `GM_setValue` — all settings persisted per-browser
-- **Rendering**: `requestAnimationFrame` for clock/age ticks, minute-boundary prayer grid re-renders
+- **Rendering**: 1-second `setInterval` for clock/age ticks (paused when tab is hidden), canvas for the life-weeks grid, minute-boundary prayer grid re-renders
 - **Bidi**: Arabic prayer names wrapped in `unicode-bidi:isolate` spans to prevent RTL/LTR reordering
 - **Compatibility**: Tampermonkey / Violentmonkey on all Chromium + Firefox browsers
 - **Performance**: DOM refs cached at init, intervals paused on tab hide, no polling loops
@@ -161,6 +171,12 @@ Toggle with **Alt+Ctrl** or the close button.
 ---
 
 ## 📝 Changelog
+
+### v4.7.5
+- ⚡ Replaced `requestAnimationFrame` clock loop with 1-second `setInterval`
+- ⚡ Tick pauses on `visibilitychange` (tab hidden) and resumes instantly on return
+- ⚡ Life-weeks grid migrated from DOM (~4,000+ nodes) to a single `<canvas>`
+- 🧹 Removed obsolete `.ti-lc-grid` / `.ti-lc-wk` CSS
 
 ### v4.7.4
 - ✨ Auto-scale island by screen width (`autoScale()`); `islandScale` defaults to `'auto'`

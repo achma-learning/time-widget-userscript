@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         🏝️ Time Island & Sidebar Widgets v4
 // @namespace    https://achma-learning.github.io/
-// @version      4.7.4
-// @description  Floating island with clock, dates (EN/Hijri), prayer countdown, live age + sidebar: prayer times (35 Moroccan cities), weather, calendar, life-in-weeks grid, live age counter, stopwatch, notes, editable links. Auto-hide, section toggles, scale/font/blur/color presets, prayer glow. Alt+Ctrl=sidebar, Alt+T=island, Alt+Ctrl+Space=command palette. Auto-scale by screen width, OS light/dark theme, weather refresh on reconnect.
+// @version      4.7.5
+// @description  Floating island with clock, dates (EN/Hijri), prayer countdown, live age + sidebar: prayer times (35 Moroccan cities), weather, calendar, life-in-weeks grid, live age counter, stopwatch, notes, editable links. Auto-hide, section toggles, scale/font/blur/color presets, prayer glow. Alt+Ctrl=sidebar, Alt+T=island, Alt+Ctrl+Space=command palette. Battery-friendly tick (paused when tab hidden), canvas-rendered life grid, auto-scale, OS light/dark theme.
 // @author       Achma
 // @match        *://*/*
 // @grant        GM_addStyle
@@ -525,12 +525,6 @@
 .ti-lc-bar{height:4px;border-radius:2px;background:rgba(255,255,255,.06);margin:4px 0 8px;overflow:hidden}
 .ti-lc-bar-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--tia),var(--tia2));transition:width .5s ease}
 .ti-lc-grid-wrap{position:relative}
-.ti-lc-grid{display:grid;grid-template-columns:repeat(52,1fr);gap:0}
-.ti-lc-wk{width:100%;height:3px;border-radius:0;background:rgba(255,255,255,.06)}
-.ti-lc-wk.lived{background:var(--tia)}
-.ti-lc-wk.cur{background:var(--tio);box-shadow:0 0 3px rgba(251,146,60,.6)}
-.ti-lc-wk:hover{outline:1px solid rgba(255,255,255,.4);border-radius:1px;z-index:1;position:relative}
-.ti-lc-wk.decade{border-top:1px solid rgba(148,163,184,.2)}
 .ti-lc-legend{display:flex;justify-content:center;gap:10px;margin-top:6px;font-size:8px;color:var(--tid)}
 .ti-lc-leg-dot{display:inline-block;width:7px;height:7px;border-radius:1px;margin-right:3px;vertical-align:middle}
 .ti-lc-prompt{text-align:center;padding:16px 10px;color:var(--tid);font-size:12px}
@@ -1264,18 +1258,9 @@
     h+='</div>';
     h+=`<div class="ti-lc-bar"><div class="ti-lc-bar-fill" style="width:${pct}%"></div></div>`;
 
-    // Grid: 52 columns (weeks) × exp rows (years)
-    h+='<div class="ti-lc-grid-wrap"><div class="ti-lc-grid">';
-    for(let yr=0;yr<exp;yr++){
-      const isDec=yr>0&&yr%10===0;
-      for(let wk=0;wk<52;wk++){
-        const w=yr*52+wk;
-        let cls = w < weeksLived ? 'lived' : (w === weeksLived ? 'cur' : '');
-        if(isDec) cls+=' decade';
-        h+=`<div class="ti-lc-wk ${cls}" title="Age ${yr}, Week ${wk+1}"></div>`;
-      }
-    }
-    h+='</div></div>';
+    // Grid: canvas (52 cols × exp rows of 6×6 cells)
+    const cellW=6, cellH=6, canvasW=52*cellW;
+    h+=`<div class="ti-lc-grid-wrap"><canvas id="ti-lc-canvas" width="${canvasW}" height="${exp*cellH}" style="width:100%;height:auto;display:block;image-rendering:pixelated"></canvas></div>`;
 
     // Legend
     h+='<div class="ti-lc-legend">';
@@ -1285,6 +1270,32 @@
     h+='</div>';
 
     lcBody.innerHTML=h;
+
+    // Draw the grid on the canvas
+    const cv=document.getElementById('ti-lc-canvas');
+    if(!cv) return;
+    const ctx=cv.getContext('2d');
+    const cs=getComputedStyle(document.body);
+    const livedColor=(cs.getPropertyValue('--tia').trim()||'#38bdf8');
+    const nowColor=(cs.getPropertyValue('--tio').trim()||'#fb923c');
+    const futureColor='rgba(148,163,184,.18)';
+    const decadeColor='rgba(148,163,184,.25)';
+    ctx.clearRect(0,0,cv.width,cv.height);
+    for(let yr=0;yr<exp;yr++){
+      for(let wk=0;wk<52;wk++){
+        const w=yr*52+wk;
+        ctx.fillStyle = w<weeksLived?livedColor : (w===weeksLived?nowColor:futureColor);
+        ctx.fillRect(wk*cellW, yr*cellH, cellW-0.5, cellH-0.5);
+      }
+      if(yr>0&&yr%10===0){
+        ctx.strokeStyle=decadeColor;
+        ctx.lineWidth=0.5;
+        ctx.beginPath();
+        ctx.moveTo(0, yr*cellH);
+        ctx.lineTo(cv.width, yr*cellH);
+        ctx.stroke();
+      }
+    }
   }
 
   lcBday.addEventListener('change',()=>{
@@ -1489,9 +1500,11 @@
   $('ti-lnk-url').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();addLink()}});
 
   // ═══════════════════════════════════════════
-  //  §14  MAIN TICK (requestAnimationFrame)
+  //  §14  MAIN TICK (1-second interval, paused when tab hidden)
   // ═══════════════════════════════════════════
   let lastS=-1;
+  let tickInterval=null;
+
   function tick(){
     const now=new Date(),s=now.getSeconds();
     if(s!==lastS){
@@ -1507,8 +1520,15 @@
       updLiveAge();
       if(s===0)renderPG();
     }
-    requestAnimationFrame(tick);
   }
+
+  function startTick(){ if(!tickInterval){ tick(); tickInterval=setInterval(tick,1000); } }
+  function stopTick(){ if(tickInterval){ clearInterval(tickInterval); tickInterval=null; } }
+
+  document.addEventListener('visibilitychange',()=>{
+    if(document.hidden) stopTick();
+    else { lastS=-1; startTick(); }
+  });
 
   // ═══════════════════════════════════════════
   //  §15  SHORTCUTS & DRAG
@@ -1606,7 +1626,7 @@
   //  §16  INIT
   // ═══════════════════════════════════════════
   renderSC();
-  requestAnimationFrame(tick);
+  startTick();
   fetchPrayer();
   fetchWeather();
   setInterval(fetchPrayer,3600000);
