@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         🏝️ Time Island & Sidebar Widgets v4
 // @namespace    https://achma-learning.github.io/
-// @version      4.7.5
-// @description  Floating island with clock, dates (EN/Hijri), prayer countdown, live age + sidebar: prayer times (35 Moroccan cities), weather, calendar, life-in-weeks grid, live age counter, stopwatch, notes, editable links. Auto-hide, section toggles, scale/font/blur/color presets, prayer glow. Alt+Ctrl=sidebar, Alt+T=island, Alt+Ctrl+Space=command palette. Battery-friendly tick (paused when tab hidden), canvas-rendered life grid, auto-scale, OS light/dark theme.
+// @version      4.7.6
+// @description  Floating island with clock, dates (EN/Hijri), prayer countdown, live age + sidebar: prayer times (35 Moroccan cities), weather, calendar, life-in-weeks grid, live age counter, stopwatch, notes, editable links. Auto-hide, section toggles, scale/font/blur/color presets, prayer glow. Alt+Ctrl=sidebar, Alt+T=island, Alt+Ctrl+Space=command palette. Mode-change toast (top-right, 🤲, 1/3/5/15s/custom). Battery-friendly tick (paused when tab hidden), canvas-rendered life grid, auto-scale, OS light/dark theme.
 // @author       Achma
 // @match        *://*/*
 // @grant        GM_addStyle
@@ -154,6 +154,9 @@
     secAge:      gGet('ti_secAge', false),              // live age section on island
     secWeather:  gGet('ti_secWeather', true),           // weather indicator section on island
     clickPopups: gGet('ti_clickPopups', false),          // click (instead of hover) to open popups
+    toastEnabled:    gGet('ti_toastEnabled', true),         // top-right toast on mode change (Alt+T / Alt+Ctrl)
+    toastDuration:   gGet('ti_toastDuration', 3),           // 1 | 3 | 5 | 15 | -1 (custom uses toastCustomDur)
+    toastCustomDur:  gGet('ti_toastCustomDur', 8),          // seconds, used when toastDuration === -1
   };
 
   const DEFAULT_LINKS=[
@@ -232,6 +235,21 @@
   66%{border-color:rgba(250,204,21,.9);box-shadow:0 0 18px rgba(250,204,21,.25),0 8px 32px rgba(0,0,0,.4)}
 }
 #ti-island.ti-pray-glow{animation:tiPrayGlow 3s ease-in-out infinite;border-width:1.5px}
+
+/* ── Mode-change Toast — iOS Dynamic Island-inspired (top-right) ── */
+@keyframes tiToastInflate{0%{transform:translateY(-18px) scale(.6);opacity:0;filter:blur(6px)}55%{filter:blur(0)}100%{transform:translateY(0) scale(1);opacity:1;filter:blur(0)}}
+@keyframes tiToastDeflate{0%{transform:translateY(0) scale(1);opacity:1}100%{transform:translateY(-6px) scale(.85);opacity:0;filter:blur(3px)}}
+@keyframes tiToastBar{from{transform:scaleX(1)}to{transform:scaleX(0)}}
+@keyframes tiToastEmoPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}
+#ti-toast{position:fixed;top:14px;right:14px;z-index:2147483647;display:flex;align-items:center;gap:11px;padding:9px 16px 9px 11px;min-width:148px;max-width:340px;background:linear-gradient(180deg,rgba(20,22,30,.82),rgba(8,10,16,.88));backdrop-filter:blur(34px) saturate(2.2);-webkit-backdrop-filter:blur(34px) saturate(2.2);border:.5px solid rgba(255,255,255,.14);border-radius:999px;box-shadow:0 10px 40px rgba(0,0,0,.55),0 1px 0 rgba(255,255,255,.07) inset,0 -1px 0 rgba(0,0,0,.3) inset;color:#f4f5f7;font:600 13.5px/1.25 -apple-system,'SF Pro Text','SF Pro Display',var(--tif);letter-spacing:-.01em;pointer-events:none;opacity:0;transform:translateY(-18px) scale(.6);overflow:hidden;will-change:transform,opacity}
+#ti-toast.show{animation:tiToastInflate .55s cubic-bezier(.34,1.56,.64,1) forwards}
+#ti-toast.hide{animation:tiToastDeflate .28s cubic-bezier(.4,0,.2,1) forwards}
+#ti-toast .ti-toast-emo{flex:0 0 auto;width:30px;height:30px;display:grid;place-items:center;font-size:17px;line-height:1;background:radial-gradient(circle at 30% 30%,rgba(167,139,250,.35),rgba(56,189,248,.18) 60%,transparent);border-radius:50%;box-shadow:0 0 0 .5px rgba(255,255,255,.12) inset;animation:tiToastEmoPulse 1.6s ease-in-out infinite}
+#ti-toast .ti-toast-body{flex:1;display:flex;flex-direction:column;gap:1px;min-width:0}
+#ti-toast .ti-toast-msg{font-weight:600;font-size:13.5px;color:#f7f8fa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:-.01em}
+#ti-toast .ti-toast-sub{font-weight:500;font-size:10.5px;color:rgba(235,238,245,.55);letter-spacing:.02em;text-transform:uppercase}
+#ti-toast .ti-toast-bar{position:absolute;left:14px;right:14px;bottom:3px;height:2px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden}
+#ti-toast .ti-toast-bar::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,#a78bfa,#38bdf8 60%,#34d399);transform-origin:left center;border-radius:2px;animation:tiToastBar var(--ti-toast-dur,3s) linear forwards}
 
 /* ── Live Age (island + sidebar) ── */
 .ti-age{font-size:11px;color:var(--tig2);font-weight:600;font-family:var(--tim);white-space:nowrap}
@@ -723,6 +741,9 @@
       <div class="ti-set-row"><span class="ti-set-label">Show Island Emojis</span><button class="ti-set-tog ${cfg.showEmojis?'on':'off'}" id="ti-tog-emoji"></button></div>
       <div class="ti-set-row"><span class="ti-set-label">Show Hover Popups</span><button class="ti-set-tog ${cfg.showPopups?'on':'off'}" id="ti-tog-popups"></button></div>
       <div class="ti-set-row"><span class="ti-set-label">Click to Open Popups</span><button class="ti-set-tog ${cfg.clickPopups?'on':'off'}" id="ti-tog-clickpopups"></button></div>
+      <div class="ti-set-row"><span class="ti-set-label">Mode-Change Toast 🤲</span><button class="ti-set-tog ${cfg.toastEnabled?'on':'off'}" id="ti-tog-toast"></button></div>
+      <div class="ti-set-row"><span class="ti-set-label">Toast Duration</span><select class="ti-set-sel" id="ti-sel-toast-dur"><option value="1">1s</option><option value="3">3s</option><option value="5">5s</option><option value="15">15s</option><option value="-1">Custom…</option></select></div>
+      <div class="ti-set-row" id="ti-toast-custom-row" style="${cfg.toastDuration===-1?'':'display:none'}"><span class="ti-set-label">Custom (sec)</span><div class="ti-set-range-row"><input type="number" class="ti-lc-input" id="ti-toast-custom" min="1" max="600" value="${cfg.toastCustomDur}"><button class="ti-set-cbtn" id="ti-toast-test">Preview</button></div></div>
       <div class="ti-set-row"><span class="ti-set-label">Auto-Hide Island</span><button class="ti-set-tog ${cfg.autoHide?'on':'off'}" id="ti-tog-autohide"></button></div>
 
       <div class="ti-set-divider"></div>
@@ -1433,6 +1454,25 @@
   setupTog('ti-tog-emoji','showEmojis',()=>syncIslandClasses());
   setupTog('ti-tog-popups','showPopups',v=>{if(!v)closeAllPopups()});
   setupTog('ti-tog-clickpopups','clickPopups',()=>{closeAllPopups()});
+  setupTog('ti-tog-toast','toastEnabled',v=>{if(v)showToast('Toasts on','🤲','Time Island')});
+
+  // --- Toast duration ---
+  const selToastDur=$('ti-sel-toast-dur');
+  selToastDur.value=cfg.toastDuration;
+  selToastDur.addEventListener('change',e=>{
+    cfg.toastDuration=+e.target.value; gSet('ti_toastDuration',cfg.toastDuration);
+    $('ti-toast-custom-row').style.display=cfg.toastDuration===-1?'':'none';
+    const secs=cfg.toastDuration===-1?cfg.toastCustomDur:cfg.toastDuration;
+    showToast(`Duration set to ${secs}s`,'⏱️','Toast preference');
+  });
+  $('ti-toast-custom').addEventListener('input',e=>{
+    const v=Math.max(1,Math.min(600,+e.target.value||3));
+    cfg.toastCustomDur=v; gSet('ti_toastCustomDur',v);
+  });
+  $('ti-toast-test').addEventListener('click',()=>{
+    const secs=cfg.toastDuration===-1?cfg.toastCustomDur:cfg.toastDuration;
+    showToast(`Preview · ${secs}s`,'🤲','Tool at human service');
+  });
   setupTog('ti-tog-autohide','autoHide',v=>{
     if(v){syncHotzone()}else{hotzone.classList.remove('active');island.classList.remove('ti-auto-out')}
   });
@@ -1590,16 +1630,53 @@
     render('');
   }
 
+  // ── Mode-change Toast — iOS Dynamic Island-inspired (top-right, configurable) ──
+  let toastEl=null, toastHideId=null;
+  function toastDurationMs(){
+    const d=cfg.toastDuration===-1?cfg.toastCustomDur:cfg.toastDuration;
+    const n=Number(d);
+    return (Number.isFinite(n)&&n>0?n:3)*1000;
+  }
+  function showToast(msg,emoji='🤲',sub=''){
+    if(!cfg.toastEnabled)return;
+    if(!toastEl){
+      toastEl=document.createElement('div');
+      toastEl.id='ti-toast';
+      toastEl.innerHTML=
+        '<span class="ti-toast-emo"></span>'+
+        '<span class="ti-toast-body"><span class="ti-toast-msg"></span><span class="ti-toast-sub"></span></span>'+
+        '<span class="ti-toast-bar"></span>';
+      document.body.appendChild(toastEl);
+    }
+    clearTimeout(toastHideId);
+    const ms=toastDurationMs();
+    toastEl.querySelector('.ti-toast-emo').textContent=emoji;
+    toastEl.querySelector('.ti-toast-msg').textContent=msg;
+    toastEl.querySelector('.ti-toast-sub').textContent=sub||'Time Island';
+    toastEl.style.setProperty('--ti-toast-dur',(ms/1000)+'s');
+    // Restart entry + progress animations cleanly on rapid re-trigger
+    toastEl.classList.remove('show','hide'); void toastEl.offsetWidth;
+    const bar=toastEl.querySelector('.ti-toast-bar');
+    if(bar){const c=bar.cloneNode(true); bar.replaceWith(c);}
+    toastEl.classList.add('show');
+    toastHideId=setTimeout(()=>{
+      if(!toastEl)return;
+      toastEl.classList.remove('show');
+      toastEl.classList.add('hide');
+    },ms);
+  }
+
   document.addEventListener('keydown',e=>{
     if(e.altKey&&e.ctrlKey&&!e.shiftKey&&!e.metaKey){
       e.preventDefault();
-      if(e.key===' ')commandPalette();
-      else sb.classList.toggle('open');
+      if(e.key===' '){commandPalette();showToast('Command Palette','🎛️','⌥⌃ Space')}
+      else{const open=sb.classList.toggle('open');showToast(open?'Sidebar opened':'Sidebar closed','🤲','⌥⌃')}
     }
     if(e.altKey&&!e.ctrlKey&&(e.key==='t'||e.key==='T')){
       e.preventDefault();cfg.showIsland=!cfg.showIsland;gSet('ti_showIsland',cfg.showIsland);
       syncIslandClasses();
       $('ti-tog-island').className='ti-set-tog '+(cfg.showIsland?'on':'off');
+      showToast(cfg.showIsland?'Island shown':'Island hidden','🤲','⌥ T');
     }
   });
 
