@@ -621,6 +621,8 @@
       const y=Math.max(0,Math.min(cfg.islandPosY,window.innerHeight-r.height));
       island.style.left=x+'px'; island.style.top=y+'px';
       island.style.right='auto'; island.style.bottom='auto'; island.style.transform='none';
+      if(x!==cfg.islandPosX){ cfg.islandPosX=x; gSet('ti_posX',x); }
+      if(y!==cfg.islandPosY){ cfg.islandPosY=y; gSet('ti_posY',y); }
     }else{
       // Preset: clear inline coords so the CSS class can drive positioning.
       island.style.left=''; island.style.top='';
