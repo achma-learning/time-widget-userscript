@@ -1,3 +1,37 @@
+## v4.7.8 — Performance + UX polish
+
+### Position
+- **Drag-to-Custom is now persistent.** Dropping the island anywhere saves
+  its `{x, y}` to `GM_setValue` (`ti_posX`, `ti_posY`) and switches the
+  position mode to **Custom (drag)** — preserved across reloads.
+- New **Custom (drag)** option in the Island Position dropdown. Selecting it
+  without a prior drag seeds the coordinates from the current rendered
+  position so the island never jumps to (0, 0).
+- Custom positions are clamped to the viewport on resize, alongside the
+  auto-scale tier re-evaluation (still debounced 150 ms).
+
+### Auto-hide
+- **macOS-style edge proximity** replaces the Windows-style full-width
+  hotzone strip. The strip element is gone (no more overlay over fixed
+  headers / nav bars); a passive document `mousemove` listener reveals the
+  island when the cursor is within 6 px of the active edge (top, bottom, or
+  closest edge for Custom positions).
+
+### Stopwatch
+- Now driven by `performance.now()` + `requestAnimationFrame` instead of
+  `setInterval(…, 30)`. Drift-free, paints at ~30 fps (plenty for hundredths
+  of a second), and pauses automatically with the tab.
+
+### Hijri date
+- Cached per-day. The island tick previously re-ran the arithmetic
+  conversion every second; now `getHijri()` returns a memoized object until
+  the gregorian day flips or the Aladhan API payload changes.
+
+### Footer
+- Sidebar footer version now reads `v4.7.8` (was stuck at `v4.7.1`).
+
+---
+
 ## v4.7.7 — Hardening pass
 
 ### Settings cleanup

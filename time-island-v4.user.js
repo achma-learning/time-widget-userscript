@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         🏝️ Time Island & Sidebar Widgets v4
 // @namespace    https://achma-learning.github.io/
-// @version      4.7.7
-// @description  Floating island with clock, dates (EN/Hijri), prayer countdown, live age + sidebar: prayer times (35 Moroccan cities), weather, calendar, life-in-weeks grid, live age counter, stopwatch, notes, editable links. Auto-hide, section toggles, scale/font/blur/color presets, prayer glow. Alt+Ctrl=sidebar, Alt+T=island, Alt+Ctrl+Space=command palette. Mode-change toast (top-right, 🤲). Battery-friendly tick (paused when tab hidden), canvas-rendered life grid, auto-scale (live on resize), OS light/dark theme. Hardened: SPA/iframe re-injection guard, rel=noopener on external links, percent-encoded weather city, palette closes on outside click.
+// @version      4.7.8
+// @description  Floating island with clock, dates (EN/Hijri), prayer countdown, live age + sidebar: prayer times (35 Moroccan cities), weather, calendar, life-in-weeks grid, live age counter, stopwatch (rAF-driven), notes, editable links. Auto-hide via macOS-style edge proximity, section toggles, scale/font/blur/color presets, prayer glow. Alt+Ctrl=sidebar, Alt+T=island, Alt+Ctrl+Space=command palette. Mode-change toast (top-right, 🤲). Drag-to-Custom position is persisted across reloads. Hardened: SPA/iframe re-injection guard, rel=noopener on external links, percent-encoded weather city, palette closes on outside click, Hijri cached per-day.
 // @author       Achma
 // @match        *://*/*
 // @grant        GM_addStyle
@@ -112,12 +112,22 @@
   }
 
   // Prefers Aladhan API Hijri (exact); falls back to arithmetic toHijri() before first fetch or when stale.
+  // Cached per-day so the (~once-per-second) island tick only does work when the
+  // gregorian day or the Aladhan payload actually changes.
+  let hijriCache={key:'',val:null};
   function getHijri(now){
     const ds=`${P(now.getDate())}-${P(now.getMonth()+1)}-${now.getFullYear()}`;
-    if(apiHijri&&apiHijri.gDate===ds)
-      return{day:apiHijri.day,monthName:apiHijri.monthAr||apiHijri.monthEn||'',year:apiHijri.year};
-    const h=toHijri(now.getFullYear(),now.getMonth(),now.getDate());
-    return{day:h.day,monthName:HIJRI_M[h.month-1]||'',year:h.year};
+    const key=ds+'|'+(apiHijri&&apiHijri.gDate===ds?apiHijri.day+'-'+(apiHijri.monthAr||apiHijri.monthEn||'')+'-'+apiHijri.year:'arith');
+    if(hijriCache.key===key) return hijriCache.val;
+    let val;
+    if(apiHijri&&apiHijri.gDate===ds){
+      val={day:apiHijri.day,monthName:apiHijri.monthAr||apiHijri.monthEn||'',year:apiHijri.year};
+    }else{
+      const h=toHijri(now.getFullYear(),now.getMonth(),now.getDate());
+      val={day:h.day,monthName:HIJRI_M[h.month-1]||'',year:h.year};
+    }
+    hijriCache={key,val};
+    return val;
   }
 
   // ═══════════════════════════════════════════
@@ -127,7 +137,7 @@
   let prayerData = null;
   let prayerHijri = '';
   let apiHijri = null;  // { day, monthAr, monthEn, year, weekdayAr, gDate } from Aladhan; null until first fetch
-  let swOn=false,swT0=0,swE=0,swI=null;
+  let swOn=false,swT0=0,swE=0,swRaf=null;
   let prayGlow=false;                     // transient — true when within GLOW_MIN of adhan
   let glowTimeoutId=null;                 // setTimeout reference for auto-stop
   let glowSuppressed=false;              // true once glow has timed-out for current prayer
@@ -136,7 +146,9 @@
   let weatherData = null;                 // cached current weather for island + popup
   const osDark=window.matchMedia('(prefers-color-scheme: dark)').matches;
   const cfg = {
-    islandPos:   gGet('ti_pos','top-center'),
+    islandPos:   gGet('ti_pos','top-center'),         // top-center | top-left | top-right | bottom-center | custom
+    islandPosX:  gGet('ti_posX', null),                // px from viewport left when islandPos==='custom'
+    islandPosY:  gGet('ti_posY', null),                // px from viewport top  when islandPos==='custom'
     showIsland:  gGet('ti_showIsland', true),
     showClock:   gGet('ti_showClock', true),
     lockIsland:  gGet('ti_lockIsland', false),
@@ -207,6 +219,8 @@
 #ti-island.ti-top-left{top:12px;left:16px;transform:none}
 #ti-island.ti-top-right{top:12px;right:16px;left:auto;transform:none}
 #ti-island.ti-bottom-center{bottom:12px;top:auto;left:50%;transform:translateX(-50%)}
+/* Custom: position is fully driven by inline left/top from cfg.islandPosX/Y */
+#ti-island.ti-custom{transform:none;right:auto;bottom:auto}
 #ti-island.ti-hide{opacity:0!important;pointer-events:none!important;transform:translateY(-30px)!important}
 #ti-island:hover{box-shadow:0 8px 32px rgba(0,0,0,.4),0 0 24px rgba(56,189,248,.12)}
 
@@ -215,8 +229,10 @@
 #ti-island.ti-auto-out.ti-top-left,
 #ti-island.ti-auto-out.ti-top-right{transform:translateY(calc(-100% - 16px))!important;opacity:.15!important;pointer-events:none!important}
 #ti-island.ti-auto-out.ti-bottom-center{transform:translateY(calc(100% + 16px))!important;opacity:.15!important;pointer-events:none!important}
-#ti-hotzone{position:fixed;z-index:2147483644;display:none}
-#ti-hotzone.active{display:block}
+#ti-island.ti-auto-out.ti-custom{opacity:.15!important;pointer-events:none!important}
+/* Hotzone is a logical mousemove range now — the element is kept for backwards
+   compatibility with the syncHotzone() callsites but is fully invisible. */
+#ti-hotzone{display:none!important}
 @keyframes tiIn{from{opacity:0;transform:translateY(-30px) scale(.92)}}
 
 /* ── Island scale (zoom is spec-standard since 2024) ── */
@@ -598,6 +614,18 @@
     if(cfg.islandBg==='transparent') cls+=' ti-bg-clear';
     if(prayGlow) cls+=' ti-pray-glow';
     island.className=cls;
+    // Custom drag position: apply saved coords (clamped to viewport).
+    if(cfg.islandPos==='custom'&&Number.isFinite(cfg.islandPosX)&&Number.isFinite(cfg.islandPosY)){
+      const r=island.getBoundingClientRect();
+      const x=Math.max(0,Math.min(cfg.islandPosX,window.innerWidth-r.width));
+      const y=Math.max(0,Math.min(cfg.islandPosY,window.innerHeight-r.height));
+      island.style.left=x+'px'; island.style.top=y+'px';
+      island.style.right='auto'; island.style.bottom='auto'; island.style.transform='none';
+    }else{
+      // Preset: clear inline coords so the CSS class can drive positioning.
+      island.style.left=''; island.style.top='';
+      island.style.right=''; island.style.bottom=''; island.style.transform='';
+    }
     // Glow animation duration
     island.style.animationDuration=prayGlow?cfg.glowDur+'s':'';
 
@@ -638,22 +666,24 @@
   }
   syncIslandClasses();
 
-  // --- Auto-hide hotzone (Windows-style) ---
+  // --- Auto-hide via edge proximity (macOS-style) ---
+  // Kept the hotzone element for legacy lookups but it never shows; we instead
+  // listen to mousemove and reveal when the cursor is within EDGE_PX of the
+  // relevant viewport edge. This avoids overlaying fixed headers/nav bars.
   const hotzone=document.createElement('div');
   hotzone.id='ti-hotzone';
   document.body.appendChild(hotzone);
   let autoTimer=null;
+  const EDGE_PX=6;
 
-  /** Position the invisible hotzone strip at the island's edge */
+  /** Backwards-compatible entry point — flips state per cfg.autoHide. */
   function syncHotzone(){
-    if(!cfg.autoHide){hotzone.classList.remove('active');island.classList.remove('ti-auto-out');return}
-    hotzone.classList.add('active');
-    const isBottom=cfg.islandPos==='bottom-center';
-    Object.assign(hotzone.style,{
-      left:'0',right:'0',width:'100%',height:'14px',
-      top:isBottom?'':'0',bottom:isBottom?'0':'',
-    });
-    // Start hidden after brief delay
+    if(!cfg.autoHide){
+      island.classList.remove('ti-auto-out');
+      clearTimeout(autoTimer);
+      return;
+    }
+    // Start hidden after a brief grace period.
     clearTimeout(autoTimer);
     autoTimer=setTimeout(()=>{island.classList.add('ti-auto-out')},1200);
   }
@@ -668,8 +698,25 @@
     autoTimer=setTimeout(()=>{island.classList.add('ti-auto-out')},600);
   }
 
-  hotzone.addEventListener('mouseenter',autoHideShow);
-  hotzone.addEventListener('mouseleave',autoHideHide);
+  /** Cursor near the active edge? Used to unhide the auto-hidden island. */
+  function cursorAtIslandEdge(e){
+    if(cfg.islandPos==='bottom-center') return e.clientY>=window.innerHeight-EDGE_PX;
+    if(cfg.islandPos==='custom'){
+      // Custom drag: nearest edge wins (top vs bottom of the document).
+      const r=island.getBoundingClientRect();
+      const closerToBottom=(window.innerHeight-r.bottom)<r.top;
+      return closerToBottom
+        ? e.clientY>=window.innerHeight-EDGE_PX
+        : e.clientY<=EDGE_PX;
+    }
+    return e.clientY<=EDGE_PX;
+  }
+
+  document.addEventListener('mousemove',e=>{
+    if(!cfg.autoHide)return;
+    if(cursorAtIslandEdge(e)) autoHideShow();
+  },{passive:true});
+
   island.addEventListener('mouseenter',()=>{if(cfg.autoHide)autoHideShow()});
   island.addEventListener('mouseleave',()=>{if(cfg.autoHide)autoHideHide()});
   if(cfg.autoHide)syncHotzone();
@@ -760,7 +807,7 @@
 
       <div class="ti-set-divider"></div>
 
-      <div class="ti-set-row"><span class="ti-set-label">Island Position</span><select class="ti-set-sel" id="ti-sel-pos"><option value="top-center">Top Center</option><option value="top-left">Top Left</option><option value="top-right">Top Right</option><option value="bottom-center">Bottom Center</option></select></div>
+      <div class="ti-set-row"><span class="ti-set-label">Island Position</span><select class="ti-set-sel" id="ti-sel-pos"><option value="top-center">Top Center</option><option value="top-left">Top Left</option><option value="top-right">Top Right</option><option value="bottom-center">Bottom Center</option><option value="custom">Custom (drag)</option></select></div>
       <div class="ti-set-row"><span class="ti-set-label">Island Scale</span><select class="ti-set-sel" id="ti-sel-scale"><option value="auto">Auto</option><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option><option value="xl">XL</option></select></div>
       <div class="ti-set-row"><span class="ti-set-label">Font Preset</span><select class="ti-set-sel" id="ti-sel-font"><option value="default">Default</option><option value="digital">Digital</option><option value="papyrus">Papyrus</option></select></div>
       <div class="ti-set-row"><span class="ti-set-label">Prayer Glow Speed</span><select class="ti-set-sel" id="ti-sel-glow"><option value="1">Fast (1s)</option><option value="3">Normal (3s)</option><option value="5">Slow (5s)</option></select></div>
@@ -800,7 +847,7 @@
       </div>
     </div>
 
-    <div class="ti-foot">🏝️ Time Island v4.7.1</div>`;
+    <div class="ti-foot">🏝️ Time Island v4.7.8</div>`;
   document.body.appendChild(sb);
 
   // ═══════════════════════════════════════════
@@ -1377,9 +1424,33 @@
   // ═══════════════════════════════════════════
   const swG=$('ti-swg'),swS=$('ti-sws'),swR=$('ti-swr');
   function fSW(ms){const m=Math.floor(ms/60000),s=Math.floor((ms%60000)/1000),c=Math.floor((ms%1000)/10);return`${P(m)}:${P(s)}.${P(c)}`}
-  swG.addEventListener('click',()=>{swOn=true;swT0=Date.now()-swE;swG.style.display='none';swS.style.display='';swI=setInterval(()=>{swE=Date.now()-swT0;R.sw.textContent=fSW(swE)},30)});
-  swS.addEventListener('click',()=>{swOn=false;clearInterval(swI);swS.style.display='none';swG.style.display=''});
-  swR.addEventListener('click',()=>{swOn=false;clearInterval(swI);swE=0;R.sw.textContent='00:00.00';swS.style.display='none';swG.style.display=''});
+  // High-resolution rAF loop — drift-free, avoids fixed-interval waste, and
+  // pauses automatically when the tab is hidden.
+  let swLastPaint=0;
+  function swStep(t){
+    if(!swOn)return;
+    swE=Math.max(0,t-swT0);
+    if(t-swLastPaint>=33){ // ~30 fps is plenty for hundredths
+      R.sw.textContent=fSW(swE);
+      swLastPaint=t;
+    }
+    swRaf=requestAnimationFrame(swStep);
+  }
+  swG.addEventListener('click',()=>{
+    swOn=true; swT0=performance.now()-swE;
+    swG.style.display='none'; swS.style.display='';
+    swLastPaint=0;
+    swRaf=requestAnimationFrame(swStep);
+  });
+  swS.addEventListener('click',()=>{
+    swOn=false; if(swRaf)cancelAnimationFrame(swRaf); swRaf=null;
+    swS.style.display='none'; swG.style.display='';
+  });
+  swR.addEventListener('click',()=>{
+    swOn=false; if(swRaf)cancelAnimationFrame(swRaf); swRaf=null;
+    swE=0; R.sw.textContent='00:00.00';
+    swS.style.display='none'; swG.style.display='';
+  });
   R.notes.value=gGet('ti_notepad','');
   R.notes.addEventListener('input',()=>gSet('ti_notepad',R.notes.value));
 
@@ -1393,6 +1464,13 @@
   selPos.value=cfg.islandPos;
   selPos.addEventListener('change',e=>{
     cfg.islandPos=e.target.value;gSet('ti_pos',cfg.islandPos);
+    // Seed Custom coords from the current rendered position when there's no
+    // prior drag — otherwise the island would jump to (0,0).
+    if(cfg.islandPos==='custom'&&!(Number.isFinite(cfg.islandPosX)&&Number.isFinite(cfg.islandPosY))){
+      const r=island.getBoundingClientRect();
+      cfg.islandPosX=Math.round(r.left); cfg.islandPosY=Math.round(r.top);
+      gSet('ti_posX',cfg.islandPosX); gSet('ti_posY',cfg.islandPosY);
+    }
     syncIslandClasses();
   });
 
@@ -1674,22 +1752,33 @@
 
   // Drag — disabled when cfg.lockIsland is true
   // #8 FIX: clamp to viewport bounds using visual (post-zoom) dimensions
-  let drag=false,dx=0,dy=0;
+  let drag=false,dx=0,dy=0,dragMoved=false,dragX=0,dragY=0;
   island.addEventListener('mousedown',e=>{
     if(cfg.lockIsland||e.target.closest('button'))return;
-    drag=true;const r=island.getBoundingClientRect();
+    drag=true;dragMoved=false;
+    const r=island.getBoundingClientRect();
     dx=e.clientX-r.left;dy=e.clientY-r.top;
     island.style.transition='none';island.style.cursor='grabbing';
   });
   document.addEventListener('mousemove',e=>{
     if(!drag)return;
+    dragMoved=true;
     const r=island.getBoundingClientRect();
-    const x=Math.max(0,Math.min(e.clientX-dx, window.innerWidth-r.width));
-    const y=Math.max(0,Math.min(e.clientY-dy, window.innerHeight-r.height));
-    island.style.left=x+'px';island.style.top=y+'px';
+    dragX=Math.max(0,Math.min(e.clientX-dx, window.innerWidth-r.width));
+    dragY=Math.max(0,Math.min(e.clientY-dy, window.innerHeight-r.height));
+    island.style.left=dragX+'px';island.style.top=dragY+'px';
     island.style.bottom='auto';island.style.right='auto';island.style.transform='none';
   });
-  document.addEventListener('mouseup',()=>{if(!drag)return;drag=false;island.style.transition='';island.style.cursor=''});
+  document.addEventListener('mouseup',()=>{
+    if(!drag)return;
+    drag=false;
+    island.style.transition='';island.style.cursor='';
+    if(!dragMoved)return;
+    // Persist as Custom position so it survives reload.
+    cfg.islandPos='custom'; cfg.islandPosX=dragX; cfg.islandPosY=dragY;
+    gSet('ti_pos',cfg.islandPos); gSet('ti_posX',dragX); gSet('ti_posY',dragY);
+    const sel=$('ti-sel-pos'); if(sel) sel.value='custom';
+  });
 
   // ═══════════════════════════════════════════
   //  §16  INIT
@@ -1703,16 +1792,19 @@
   setInterval(()=>{renderSC()},60000);
   window.addEventListener('online',fetchWeather);
 
-  // Re-evaluate auto-scale tier on viewport size change (debounced).
+  // Re-evaluate auto-scale tier and re-clamp custom drag position on viewport
+  // size change (debounced).
   let resizeId=null, lastAutoTier=autoScale();
   window.addEventListener('resize',()=>{
-    if(cfg.islandScale!=='auto')return;
     clearTimeout(resizeId);
     resizeId=setTimeout(()=>{
-      const tier=autoScale();
-      if(tier===lastAutoTier)return;
-      lastAutoTier=tier;
-      syncIslandClasses();
+      let dirty=false;
+      if(cfg.islandScale==='auto'){
+        const tier=autoScale();
+        if(tier!==lastAutoTier){ lastAutoTier=tier; dirty=true; }
+      }
+      if(cfg.islandPos==='custom') dirty=true;
+      if(dirty) syncIslandClasses();
     },150);
   });
 
