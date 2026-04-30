@@ -1,3 +1,30 @@
+## v4.7.7 — Hardening pass
+
+### Settings cleanup
+- Removed *Mode-Change Toast 🤲* and *Toast Duration* settings rows. The toast
+  itself stays on with a sensible default; the surface area in the sidebar is
+  back to essentials.
+
+### Fixes / hardening
+- **Security — `rel="noopener noreferrer"` on all external links.** Quick
+  Links, the Habous monthly button, the Google Calendar popup button, and the
+  Command Palette `window.open` now all opt out of `window.opener` access and
+  referrer leakage.
+- **SPA / iframe re-injection guard.** Bail out at startup if `#ti-island`
+  or `#ti-sb` already exists, and skip cross-frame contexts (`window.top !==
+  window.self`).
+- **Weather city encoding.** Replaced `replace(/\s+/g,'+')` with
+  `encodeURIComponent()` so accented Moroccan city names (Kénitra, Tétouan,
+  Béni Mellal, Fès, Méknes, Laâyoune…) are URL-safe.
+- **Command Palette closes on outside click.** Capture-phase document
+  `mousedown` listener (registered on next tick to avoid swallowing the open
+  event), removed on close.
+- **Auto-scale follows window resize.** Debounced 150 ms `resize` handler
+  re-evaluates `autoScale()` and only re-applies classes when the tier
+  actually changes.
+
+---
+
 ## v4.7.6 — Mode-Change Toast (#27)
 
 A custom-duration message popup, anchored top-right, with prayer emoji 🤲 — fired

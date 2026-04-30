@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         🏝️ Time Island & Sidebar Widgets v4
 // @namespace    https://achma-learning.github.io/
-// @version      4.7.6
-// @description  Floating island with clock, dates (EN/Hijri), prayer countdown, live age + sidebar: prayer times (35 Moroccan cities), weather, calendar, life-in-weeks grid, live age counter, stopwatch, notes, editable links. Auto-hide, section toggles, scale/font/blur/color presets, prayer glow. Alt+Ctrl=sidebar, Alt+T=island, Alt+Ctrl+Space=command palette. Mode-change toast (top-right, 🤲, 1/3/5/15s/custom). Battery-friendly tick (paused when tab hidden), canvas-rendered life grid, auto-scale, OS light/dark theme.
+// @version      4.7.7
+// @description  Floating island with clock, dates (EN/Hijri), prayer countdown, live age + sidebar: prayer times (35 Moroccan cities), weather, calendar, life-in-weeks grid, live age counter, stopwatch, notes, editable links. Auto-hide, section toggles, scale/font/blur/color presets, prayer glow. Alt+Ctrl=sidebar, Alt+T=island, Alt+Ctrl+Space=command palette. Mode-change toast (top-right, 🤲). Battery-friendly tick (paused when tab hidden), canvas-rendered life grid, auto-scale (live on resize), OS light/dark theme. Hardened: SPA/iframe re-injection guard, rel=noopener on external links, percent-encoded weather city, palette closes on outside click.
 // @author       Achma
 // @match        *://*/*
 // @grant        GM_addStyle
@@ -17,6 +17,12 @@
 
 (function () {
   'use strict';
+
+  // Guard against duplicate injection: SPA route changes may re-run the
+  // script in the same document, and @match * means the script also runs in
+  // every iframe. Bail out if a previous instance has already injected.
+  if (window.top !== window.self) return;
+  if (document.getElementById('ti-island') || document.getElementById('ti-sb')) return;
 
   // ═══════════════════════════════════════════
   //  §0  DATA — Cities, Prayers, Months
@@ -689,7 +695,7 @@
       <div class="ti-pgr" id="ti-pgr"></div>
       <div id="ti-pg"><div class="ti-pld">جاري التحميل...</div></div>
       <div class="ti-pcd" id="ti-pcd"></div>
-      <div class="ti-habous" id="ti-habous"><a class="ti-habous-btn" id="ti-habous-btn" href="#" target="_blank">📅 الشهري / Monthly</a></div>
+      <div class="ti-habous" id="ti-habous"><a class="ti-habous-btn" id="ti-habous-btn" href="#" target="_blank" rel="noopener noreferrer">📅 الشهري / Monthly</a></div>
     </div>
 
     <!-- WEATHER -->
@@ -741,9 +747,6 @@
       <div class="ti-set-row"><span class="ti-set-label">Show Island Emojis</span><button class="ti-set-tog ${cfg.showEmojis?'on':'off'}" id="ti-tog-emoji"></button></div>
       <div class="ti-set-row"><span class="ti-set-label">Show Hover Popups</span><button class="ti-set-tog ${cfg.showPopups?'on':'off'}" id="ti-tog-popups"></button></div>
       <div class="ti-set-row"><span class="ti-set-label">Click to Open Popups</span><button class="ti-set-tog ${cfg.clickPopups?'on':'off'}" id="ti-tog-clickpopups"></button></div>
-      <div class="ti-set-row"><span class="ti-set-label">Mode-Change Toast 🤲</span><button class="ti-set-tog ${cfg.toastEnabled?'on':'off'}" id="ti-tog-toast"></button></div>
-      <div class="ti-set-row"><span class="ti-set-label">Toast Duration</span><select class="ti-set-sel" id="ti-sel-toast-dur"><option value="1">1s</option><option value="3">3s</option><option value="5">5s</option><option value="15">15s</option><option value="-1">Custom…</option></select></div>
-      <div class="ti-set-row" id="ti-toast-custom-row" style="${cfg.toastDuration===-1?'':'display:none'}"><span class="ti-set-label">Custom (sec)</span><div class="ti-set-range-row"><input type="number" class="ti-lc-input" id="ti-toast-custom" min="1" max="600" value="${cfg.toastCustomDur}"><button class="ti-set-cbtn" id="ti-toast-test">Preview</button></div></div>
       <div class="ti-set-row"><span class="ti-set-label">Auto-Hide Island</span><button class="ti-set-tog ${cfg.autoHide?'on':'off'}" id="ti-tog-autohide"></button></div>
 
       <div class="ti-set-divider"></div>
@@ -1090,7 +1093,9 @@
   }
 
   function fetchWeather(){
-    const c=getCity();const city=c[3].replace(/\s+/g,'+');
+    const c=getCity();
+    // Percent-encode (handles spaces and accented characters like é/â)
+    const city=encodeURIComponent(c[3]);
     R.ww.innerHTML='<div class="ti-wwld">Loading weather...</div>';
     GM_xmlhttpRequest({method:'GET',url:`https://wttr.in/${city}?format=j1`,onload(r){
       try{
@@ -1139,7 +1144,7 @@
     const now=new Date();
     const dateStr=`${EN_D[now.getDay()]}, ${EN_M[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`;
     const gcUrl=`https://calendar.google.com/calendar/r/day/${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()}`;
-    gcPop.innerHTML=`<div class="ti-gcp-title">📅 Today's Schedule</div><div class="ti-gcp-date">${dateStr}</div><a class="ti-gcp-btn" href="${gcUrl}" target="_blank">Open Google Calendar →</a>`;
+    gcPop.innerHTML=`<div class="ti-gcp-title">📅 Today's Schedule</div><div class="ti-gcp-date">${dateStr}</div><a class="ti-gcp-btn" href="${gcUrl}" target="_blank" rel="noopener noreferrer">Open Google Calendar →</a>`;
   }
 
   // ── Prayer Times popup (hover on countdown section) ──
@@ -1454,25 +1459,6 @@
   setupTog('ti-tog-emoji','showEmojis',()=>syncIslandClasses());
   setupTog('ti-tog-popups','showPopups',v=>{if(!v)closeAllPopups()});
   setupTog('ti-tog-clickpopups','clickPopups',()=>{closeAllPopups()});
-  setupTog('ti-tog-toast','toastEnabled',v=>{if(v)showToast('Toasts on','🤲','Time Island')});
-
-  // --- Toast duration ---
-  const selToastDur=$('ti-sel-toast-dur');
-  selToastDur.value=cfg.toastDuration;
-  selToastDur.addEventListener('change',e=>{
-    cfg.toastDuration=+e.target.value; gSet('ti_toastDuration',cfg.toastDuration);
-    $('ti-toast-custom-row').style.display=cfg.toastDuration===-1?'':'none';
-    const secs=cfg.toastDuration===-1?cfg.toastCustomDur:cfg.toastDuration;
-    showToast(`Duration set to ${secs}s`,'⏱️','Toast preference');
-  });
-  $('ti-toast-custom').addEventListener('input',e=>{
-    const v=Math.max(1,Math.min(600,+e.target.value||3));
-    cfg.toastCustomDur=v; gSet('ti_toastCustomDur',v);
-  });
-  $('ti-toast-test').addEventListener('click',()=>{
-    const secs=cfg.toastDuration===-1?cfg.toastCustomDur:cfg.toastDuration;
-    showToast(`Preview · ${secs}s`,'🤲','Tool at human service');
-  });
   setupTog('ti-tog-autohide','autoHide',v=>{
     if(v){syncHotzone()}else{hotzone.classList.remove('active');island.classList.remove('ti-auto-out')}
   });
@@ -1513,7 +1499,7 @@
   function renderLinks(){
     const list=$('ti-lnk-list');
     list.innerHTML=userLinks.map((lk,i)=>
-      `<a class="ti-la" href="${escHtml(lk.u)}" target="_blank">${escHtml(lk.n)}<span class="ti-la-del" data-i="${i}">✕</span></a>`
+      `<a class="ti-la" href="${escHtml(lk.u)}" target="_blank" rel="noopener noreferrer">${escHtml(lk.n)}<span class="ti-la-del" data-i="${i}">✕</span></a>`
     ).join('');
     list.querySelectorAll('.ti-la-del').forEach(btn=>{
       btn.addEventListener('click',e=>{
@@ -1612,10 +1598,14 @@
     function pick(it){
       if(it.type==='city')pickCity(it.idx);
       else if(it.type==='toggle'){cfg[it.key]=!cfg[it.key];gSet('ti_'+it.key,cfg[it.key]);syncIslandClasses();}
-      else if(it.type==='link')window.open(it.url,'_blank');
+      else if(it.type==='link')window.open(it.url,'_blank','noopener,noreferrer');
       close();
     }
-    function close(){box.remove();}
+    function close(){
+      box.remove();
+      document.removeEventListener('mousedown',onDocDown,true);
+    }
+    function onDocDown(e){ if(!box.contains(e.target)) close(); }
     inp.addEventListener('input',()=>render(inp.value.toLowerCase().trim()));
     inp.addEventListener('keydown',e=>{
       const items=res._items||[];
@@ -1626,7 +1616,9 @@
       else if(e.key==='Escape'){close();return;}
       els.forEach((el,i)=>el.classList.toggle('hl',i===hlIdx));
     });
-    box.addEventListener('mousedown',e=>{if(e.target===box)close();});
+    // Close on outside mousedown (capture phase so it fires before site handlers).
+    // Defer registration one tick so the keydown that opened us doesn't trigger close.
+    setTimeout(()=>document.addEventListener('mousedown',onDocDown,true),0);
     render('');
   }
 
@@ -1710,5 +1702,18 @@
   setInterval(fetchWeather,1800000);
   setInterval(()=>{renderSC()},60000);
   window.addEventListener('online',fetchWeather);
+
+  // Re-evaluate auto-scale tier on viewport size change (debounced).
+  let resizeId=null, lastAutoTier=autoScale();
+  window.addEventListener('resize',()=>{
+    if(cfg.islandScale!=='auto')return;
+    clearTimeout(resizeId);
+    resizeId=setTimeout(()=>{
+      const tier=autoScale();
+      if(tier===lastAutoTier)return;
+      lastAutoTier=tier;
+      syncIslandClasses();
+    },150);
+  });
 
 })();
