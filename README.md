@@ -1,5 +1,19 @@
 # time-widget-userscript
-# 🏝️ Time Island — Userscript v4.7.5
+# 🏝️ Time Island — Userscript
+
+> **Latest: v6.0.0 — Dual Panels** → [`time-island-v6.user.js`](time-island-v6.user.js)
+> `Alt+Ctrl` now opens **two** mirrored panels: the familiar widgets on the right, and a new
+> **To-Do · Day spine · Focus** panel on the left. See [CHANGELOG](CHANGELOG.md#v600--dual-panels-time-island-v6userjs).
+>
+> | Left panel (new) | Right panel (v5) |
+> |---|---|
+> | ✅ To-Do grouped by prayer window, daily repeats, export/import | 🕌 Prayer times, 🌤️ weather, 📅 calendar |
+> | 🕌 Day spine — Fajr→Isha to scale, now marker, focus blocks | 🕐 clock, ⏱️ stopwatch, 📝 notes |
+> | 🎯 Focus timer linked to tasks, warns before the adhan | ⏳ life in weeks, 💀 live age, ⚙️ settings, 🔗 links |
+
+---
+
+# Time Island v4.7.5 (earlier notes)
 
 > A floating island widget + sidebar dashboard for every website. Prayer times, weather, calendar, life tracker, and more — designed for Moroccan users with full Arabic/RTL support.
 
@@ -144,7 +158,7 @@ Toggle with **Alt+Ctrl** or the close button.
 
 | Shortcut | Action |
 |----------|--------|
-| `Alt + Ctrl` | Toggle sidebar |
+| `Alt + Ctrl` | Toggle sidebar (v6: both panels, on release) |
 | `Alt + T` | Toggle island visibility |
 | `Alt + Ctrl + Space` | Open command palette (search cities, toggles, links) |
 

@@ -1,3 +1,51 @@
+## v6.0.0 — Dual Panels (`time-island-v6.user.js`)
+
+A new script built on v5.0.1 (`ver 5.js`); everything v5 does is kept.
+
+### New: left panel (mirror of the right sidebar)
+- **Opens with the right sidebar** — one `Alt+Ctrl` opens/closes both; either ✕ closes both.
+  Settings → *Show To-Do Panel (left)* turns it off (Alt+Ctrl then opens the right one only).
+- **✅ To-Do** — add with Enter, anchor a task to a prayer window (*After Fajr … After Isha*,
+  or *Anytime*); the current window is marked **NOW**. `↻ Daily` tasks uncheck themselves at
+  midnight (habits: adhkar, wird). Double-click to edit, ✕ to delete, All / Active / Done filter,
+  progress bar, *Clear done*, JSON **Export / Import**. Finished one-off tasks auto-clear after 7 days.
+  Arabic tasks render RTL (`dir=auto`). Task text is only ever written with `textContent`.
+- **🕌 Day spine** — the day drawn to scale from Fajr−20 min to Isha+3 h: prayer ticks at their
+  true time, a pulsing "now" marker, today's focus sessions as blocks.
+- **🎯 Focus** — pomodoro (25/5/15, 4 per cycle, all editable) with a daily goal bar. ▶ on a task
+  focuses it; finished sessions are counted on the task (●2). **Warns when a session would run
+  into the next adhan.** The timer is stored as its end instant in shared GM storage, so it is the
+  same in every tab and survives navigation/reloads; an island chip shows it while live.
+
+### Ported from `start-dock.html`
+- Offline prayer times (PrayTimes.org astronomy, Morocco method 21): instant first paint, and the
+  fallback when AlAdhan errors/times out (the grid says which source is shown).
+- Hijri fallback via the browser's Umm al-Qura calendar (`Intl`) before the arithmetic one.
+- Jumuʿa / Iftar names on Fridays / in Ramadan.
+- Adhan pill: drop-in at adhan + optional early reminder (Off/5/10/15/20 min), once per prayer per day
+  across all tabs.
+- Colour is state: saffron = now · verdigris = done · terracotta = prayer · majorelle = repeats.
+- Closed panels leave rendering (`visibility:hidden`), so no offscreen backdrop blur and no
+  box-shadow bleeding into the screen edge.
+
+### Fixes over v5
+- **AltGr no longer toggles the sidebar.** Windows reports AltGr as Ctrl+Alt, so typing `@`, `#`, `{`
+  on AZERTY/Arabic layouts toggled the sidebar and swallowed the character. Alt+Ctrl now fires on
+  release, only if nothing else was pressed — which also stops Alt+Ctrl+Space opening the sidebar
+  together with the palette.
+- Prayer times refresh at midnight (v5 kept yesterday's until the hourly refetch).
+- Island dividers are correct when a middle section is hidden.
+- Palette toggles update the Settings switches; Enter picks the first match; typing anything
+  offers *＋ Add task*.
+
+### Notes
+- GM storage is per script: v6 starts with fresh settings (city, birthday, links). Disable v5.
+- The Greasyfork `@downloadURL/@updateURL` of v5 were dropped — they point at the v4 listing and
+  would overwrite v6.
+- New grant: `GM_addValueChangeListener` (live task/timer sync between tabs; optional).
+
+---
+
 ## v4.7.8 — Performance + UX polish
 
 ### Position
